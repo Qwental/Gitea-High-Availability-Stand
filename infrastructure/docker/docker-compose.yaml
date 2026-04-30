@@ -1,0 +1,99 @@
+services:
+  db-01:
+    build:
+      context: .
+      dockerfile: node-ubuntu.Dockerfile
+    container_name: db-cluster-01
+    privileged: true
+    networks:
+      lab-internal-net:
+        ipv4_address: ${IP_DB_01}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+  db-02:
+    build:
+      context: .
+      dockerfile: node-ubuntu.Dockerfile
+    container_name: db-cluster-02
+    privileged: true
+    networks:
+      lab-internal-net:
+        ipv4_address: ${IP_DB_02}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+  gitea-app:
+    build:
+      context: .
+      dockerfile: node-ubuntu.Dockerfile
+    container_name: gitea-app
+    privileged: true
+    networks:
+      lab-internal-net:
+        ipv4_address: ${IP_GITEA}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+  jenkins-master:
+    build:
+      context: .
+      dockerfile: node-ubuntu.Dockerfile
+    container_name: jenkins-master
+    privileged: true
+    networks:
+      lab-internal-net:
+        ipv4_address: ${IP_JENKINS}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+  jenkins-worker-01:
+    build:
+      context: .
+      dockerfile: node-ubuntu.Dockerfile
+    container_name: jenkins-worker-01
+    privileged: true
+    networks:
+      lab-internal-net:
+        ipv4_address: ${IP_WORKER}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+  backup-srv:
+    build:
+      context: .
+      dockerfile: node-ubuntu.Dockerfile
+    container_name: backup-srv
+    privileged: true
+    networks:
+      lab-internal-net:
+        ipv4_address: ${IP_STORAGE}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+  deploy-target-01:
+    build:
+      context: .
+      dockerfile: node-ubuntu.Dockerfile
+    container_name: deploy-target-01
+    privileged: true
+    networks:
+      lab-internal-net:
+        ipv4_address: ${IP_DEPLOY_TARGET}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+networks:
+  lab-internal-net:
+    name: lab-internal-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${SUBNET_CIDR}
+          gateway: ${GATEWAY_IP}
