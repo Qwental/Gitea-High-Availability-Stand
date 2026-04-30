@@ -1,0 +1,25 @@
+---
+- name: Create Gitea database user
+  community.postgresql.postgresql_user:
+    name: "{{ gitea_db_user | default('gitea') }}"
+    password: "{{ gitea_db_password }}"
+    state: present
+  become_user: postgres
+  when: is_master | bool
+
+- name: Create Gitea database
+  community.postgresql.postgresql_db:
+    name: "{{ gitea_db_name | default('gitea') }}"
+    owner: "{{ gitea_db_user | default('gitea') }}"
+    state: present
+  become_user: postgres
+  when: is_master | bool
+
+- name: Grant all privileges on database to Gitea user
+  community.postgresql.postgresql_privs:
+    db: "{{ gitea_db_name | default('gitea') }}"
+    role: "{{ gitea_db_user | default('gitea') }}"
+    privs: ALL
+    type: database
+  become_user: postgres
+  when: is_master | bool
