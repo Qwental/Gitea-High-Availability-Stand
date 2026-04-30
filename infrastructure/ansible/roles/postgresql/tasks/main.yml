@@ -62,6 +62,14 @@
     mode: "0640"
   notify: restart postgresql
 
+- name: Deploy .pgpass for root user
+  ansible.builtin.template:
+    src: pgpass.j2
+    dest: /root/.pgpass
+    owner: root
+    group: root
+    mode: "0600"
+
 - name: Flush handlers
   ansible.builtin.meta: flush_handlers
 
@@ -79,11 +87,18 @@
   become_user: postgres
   when: is_master | bool
 
+- name: Set password for postgres admin user (Master)
+  community.postgresql.postgresql_user:
+    name: postgres
+    password: "{{ pg_admin_password }}"
+  become_user: postgres
+  when: is_master | bool
+
 - name: Check if replica is initialized (Slave)
   ansible.builtin.stat:
     path: "{{ pg_data_dir }}/standby.signal"
   register: standby_signal
-  when: not is_master  | bool
+  when: not is_master | bool
 
 - name: Initialize replica (Slave)
   block:
@@ -111,3 +126,17 @@
         name: postgresql
         state: started
   when: not is_master | bool and not standby_signal.stat.exists
+
+- name: Setup Gitea database
+  ansible.builtin.include_tasks: gitea.yml
+
+- name: Verify replication lag (Master)
+  community.postgresql.postgresql_query:
+    query: "SELECT abs(pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn)) AS lag
+      FROM pg_stat_replication"
+  become_user: postgres
+  register: repl_lag
+  when: is_master | bool
+  failed_when:
+    - repl_lag.query_result | length > 0
+    - repl_lag.query_result[0].lag | default(0) | int > 1048576
