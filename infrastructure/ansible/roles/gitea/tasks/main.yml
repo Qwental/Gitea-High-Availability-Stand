@@ -1,0 +1,143 @@
+---
+- name: Install dependencies
+  ansible.builtin.apt:
+    name:
+      - git
+      - ca-certificates
+      - gnupg
+      - nfs-common
+      - rpcbind
+    state: present
+    update_cache: yes
+  retries: 3
+  delay: 10
+
+- name: Ensure rpcbind is running on client
+  ansible.builtin.service:
+    name: rpcbind
+    state: started
+    enabled: yes
+
+- name: Create gitea system group
+  ansible.builtin.group:
+    name: "{{ gitea_group }}"
+    system: yes
+
+- name: Create gitea system user
+  ansible.builtin.user:
+    name: "{{ gitea_user }}"
+    group: "{{ gitea_group }}"
+    system: yes
+    shell: /bin/bash
+    home: "{{ gitea_home }}"
+    create_home: yes
+
+- name: Create required directory structure
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ gitea_user }}"
+    group: "{{ gitea_group }}"
+    mode: "0750"
+  loop:
+    - "{{ gitea_work_dir }}"
+    - "{{ gitea_work_dir }}/custom"
+    - "{{ gitea_work_dir }}/data"
+    - "{{ gitea_work_dir }}/log"
+
+- name: Unmount repositories if stale (Cleanup)
+  ansible.posix.mount:
+    path: /var/lib/gitea/data/gitea-repositories
+    state: unmounted
+  failed_when: false
+
+- name: Mount HA NFS storage for Gitea
+  ansible.posix.mount:
+    src: "{{ storage_vip }}:/"
+    path: /var/lib/gitea/data/gitea-repositories
+    fstype: nfs
+    opts: "nfsvers=3,proto=tcp,mountproto=tcp,rw,soft,timeo=10,retrans=2,noatime,no\
+      lock"
+    state: mounted
+
+- name: Set permissions on mounted NFS volume
+  ansible.builtin.file:
+    path: /var/lib/gitea/data/gitea-repositories
+    state: directory
+    owner: "{{ gitea_user }}"
+    group: "{{ gitea_group }}"
+    mode: "0750"
+
+- name: Create configuration directory
+  ansible.builtin.file:
+    path: "{{ gitea_conf_dir }}"
+    state: directory
+    owner: "{{ gitea_user }}"
+    group: "{{ gitea_group }}"
+    mode: "0750"
+
+- name: Download Gitea binary
+  ansible.builtin.get_url:
+    url: "https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{ gitea_version
+      }}-linux-amd64"
+    dest: /usr/local/bin/gitea
+    mode: "0755"
+    owner: root
+    group: root
+    timeout: 120
+
+- name: Deploy app.ini configuration
+  ansible.builtin.template:
+    src: app.ini.j2
+    dest: "{{ gitea_conf_dir }}/app.ini"
+    owner: "{{ gitea_user }}"
+    group: "{{ gitea_group }}"
+    mode: "0640"
+  notify: restart gitea
+
+- name: Deploy systemd unit file
+  ansible.builtin.template:
+    src: gitea.service.j2
+    dest: /etc/systemd/system/gitea.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart gitea
+
+- name: Enable and start Gitea service
+  ansible.builtin.service:
+    name: gitea
+    state: started
+    enabled: yes
+
+- name: Wait for Gitea to initialize (HTTP 200)
+  ansible.builtin.uri:
+    url: "http://localhost:{{ gitea_http_port | default(3000) }}"
+    status_code: 200
+  register: result
+  until: result.status == 200
+  retries: 30
+  delay: 2
+
+- name: Check if Gitea admin exists
+  ansible.builtin.command:
+    cmd: "/usr/local/bin/gitea admin user list --config {{ gitea_conf_dir
+      }}/app.ini"
+  register: gitea_user_list
+  changed_when: false
+  become: true
+  become_user: "{{ gitea_user }}"
+  run_once: true
+
+- name: Create Gitea admin user
+  ansible.builtin.command:
+    cmd: >
+      /usr/local/bin/gitea admin user create --username "{{
+      vault_gitea_admin_username }}" --password "{{ vault_gitea_admin_password
+      }}" --email "{{ vault_gitea_admin_email }}" --admin --config "{{
+      gitea_conf_dir }}/app.ini"
+  become: true
+  become_user: "{{ gitea_user }}"
+  when: vault_gitea_admin_username not in gitea_user_list.stdout
+  no_log: true
+  run_once: true

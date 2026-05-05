@@ -1,0 +1,43 @@
+APP_NAME = Gitea
+RUN_USER = {{ gitea_user }}
+WORK_PATH = {{ gitea_work_dir }}
+RUN_MODE = prod
+
+[database]
+DB_TYPE  = {{ gitea_db_type }}
+HOST     = {{ gitea_db_host }}
+NAME     = {{ gitea_db_name }}
+USER     = {{ gitea_db_user }}
+PASSWD   = {{ gitea_db_password }}
+SSL_MODE = disable
+
+[repository]
+ROOT = {{ gitea_work_dir }}/data/gitea-repositories
+ENABLE_PUSH_MIRROR = true
+
+[server]
+SSH_DOMAIN       = {{ gitea_domain }}
+DOMAIN           = {{ gitea_domain }}
+HTTP_PORT        = {{ gitea_http_port }}
+ROOT_URL         = {{ gitea_root_url }}
+DISABLE_SSH      = false
+SSH_PORT         = 22
+LFS_START_SERVER = true
+
+[security]
+INSTALL_LOCK = true
+INSTALL_LOCK = true
+SECRET_KEY   = {{ vault_gitea_secret_key }}
+INTERNAL_TOKEN = {{ vault_gitea_internal_token }}
+
+[oauth2]
+ENABLED = true
+JWT_SECRET = {{ vault_gitea_jwt_secret }}
+
+[log]
+MODE      = file
+LEVEL     = Info
+ROOT_PATH = {{ gitea_work_dir }}/log
+
+[repository]
+ENABLE_PUSH_MIRROR = true
