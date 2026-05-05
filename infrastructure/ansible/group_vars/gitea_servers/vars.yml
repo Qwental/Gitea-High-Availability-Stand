@@ -1,0 +1,19 @@
+gitea_version: "1.26.1"
+gitea_user: "git"
+gitea_group: "git"
+gitea_home: "/home/git"
+gitea_work_dir: "/var/lib/gitea"
+gitea_conf_dir: "/etc/gitea"
+
+# Database
+gitea_db_type: "postgres"
+gitea_db_host: "172.20.0.10:5432"
+gitea_db_name: "gitea"
+gitea_db_user: "gitea"
+
+# Server config
+gitea_http_port: 3000
+gitea_vip: "172.20.0.25"
+gitea_netmask: "24"
+gitea_domain: "172.20.0.25"
+gitea_root_url: "http://172.20.0.25:3000/"

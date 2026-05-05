@@ -1,0 +1,21 @@
+---
+- name: Deploy HA Storage Cluster
+  hosts: storage_cluster
+  become: true
+  roles:
+    - role: storage
+      tags: storage
+
+- name: Deploy Database Cluster
+  hosts: db_cluster
+  become: true
+  roles:
+    - role: postgresql
+      tags: postgres
+
+- name: Deploy Gitea Servers
+  hosts: gitea_servers
+  become: true
+  roles:
+    - role: gitea
+      tags: gitea

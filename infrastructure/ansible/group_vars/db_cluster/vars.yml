@@ -1,0 +1,19 @@
+pg_version: "14"
+pg_data_dir: "/var/lib/postgresql/{{ pg_version }}/main"
+pg_conf_dir: "/etc/postgresql/{{ pg_version }}/main"
+
+pg_vip: "172.20.0.10"
+pg_netmask: "24"
+pg_master_ip: "172.20.0.21"
+pg_repl_user: "replicator"
+pg_repl_password: "{{ vault_pg_repl_password }}"
+pg_admin_password: "{{ vault_pg_admin_password }}"
+keepalived_auth_pass: "{{ vault_keepalived_auth_pass }}"
+
+is_master: "{{ inventory_hostname == 'db-node-01' }}"
+
+
+gitea_db_name: "gitea"
+gitea_db_user: "gitea"
+gitea_db_password: "{{ vault_gitea_db_password }}"
+

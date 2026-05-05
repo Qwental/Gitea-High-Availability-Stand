@@ -1,0 +1,19 @@
+# VIP 
+storage_vip: "172.20.0.40"
+db_vip: "172.20.0.10"
+gitea_vip: "172.20.0.20"
+
+#  IP нод
+storage_node_01: "172.20.0.41"
+storage_node_02: "172.20.0.42"
+db_node_01: "172.20.0.21"
+db_node_02: "172.20.0.22"
+
+#  Gitea
+gitea_db_host: "{{ db_vip }}:5432"
+gitea_db_user: "gitea"
+gitea_db_name: "gitea"
+gitea_db_password: "{{ vault_gitea_db_password }}"
+gitea_http_port: 3000
+gitea_domain: "localhost"
+gitea_root_url: "http://localhost:3000/"

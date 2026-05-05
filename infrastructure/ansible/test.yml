@@ -1,0 +1,144 @@
+---
+- name: Deploy and build C application
+  hosts: app
+  become: yes
+
+  vars:
+    app_name: system-info-server
+    app_src_local: "../../app"
+    app_dest_remote: "/opt/app"
+    app_binary_path: "{{ app_dest_remote }}/build/bin/{{ app_name }}" # ← правильный путь
+    app_port: 8080
+
+  tasks:
+
+    # ─────────────────────────────────────────
+    # 1. Установка GCC и зависимостей
+    # ─────────────────────────────────────────
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install gcc and make
+      apt:
+        name:
+          - gcc
+          - make
+          - build-essential
+        state: present
+
+    # ─────────────────────────────────────────
+    # 2. Копирование исходников
+    # ─────────────────────────────────────────
+    - name: Create destination directory
+      file:
+        path: "{{ app_dest_remote }}"
+        state: directory
+        owner: root
+        mode: "0755"
+
+    - name: Copy app source to container
+      copy:
+        src: "{{ app_src_local }}/"
+        dest: "{{ app_dest_remote }}/"
+        owner: root
+        mode: preserve
+
+    # ─────────────────────────────────────────
+    # 3. Компиляция
+    # ─────────────────────────────────────────
+    - name: Clean previous build
+      make:
+        chdir: "{{ app_dest_remote }}"
+        target: clean
+      ignore_errors: yes
+
+    - name: Build application with make
+      make:
+        chdir: "{{ app_dest_remote }}"
+      register: build_result
+
+    - name: Show build output
+      debug:
+        msg: "{{ build_result.stdout_lines }}"
+
+    - name: Check binary exists after build
+      stat:
+        path: "{{ app_binary_path }}"
+      register: binary_stat
+
+    - name: Fail if binary not found
+      fail:
+        msg: "Binary {{ app_binary_path }} not found after build!"
+      when: not binary_stat.stat.exists
+
+    # ─────────────────────────────────────────
+    # 4. Остановка старого процесса
+    # ─────────────────────────────────────────
+    - name: Kill old process if running
+      shell: |
+        pid=$(pgrep -x {{ app_name }})
+        if [ -n "$pid" ]; then
+          kill "$pid"
+          echo "Killed PID $pid"
+        else
+          echo "No process found, skip"
+        fi
+      changed_when: false
+      ignore_errors: yes
+      register: kill_result
+
+    - name: Show kill result
+      debug:
+        var: kill_result.stdout
+
+    # ─────────────────────────────────────────
+    # 5. Запуск
+    # ─────────────────────────────────────────
+    - name: Start application in background
+      shell: |
+        nohup {{ app_binary_path }} {{ app_port }} \
+          > /var/log/{{ app_name }}.log 2>&1 &
+        echo $!
+      register: start_result
+
+    - name: Show started PID
+      debug:
+        msg: "Started PID: {{ start_result.stdout }}"
+
+    - name: Wait for app to start
+      pause:
+        seconds: 2
+
+    - name: Check application is running
+      shell: "pgrep -f {{ app_name }}"
+      register: check_pid
+      changed_when: false
+      failed_when: check_pid.rc != 0
+
+    - name: Show app PID
+      debug:
+        msg: "Application running with PID: {{ check_pid.stdout }}"
+
+    - name: Show app log
+      shell: "tail -20 /var/log/{{ app_name }}.log"
+      register: app_log
+      changed_when: false
+
+    - name: Display app log
+      debug:
+        var: app_log.stdout_lines
+
+    # ─────────────────────────────────────────
+    # 6. Проверка что порт слушается
+    # ─────────────────────────────────────────
+    - name: Check port is listening
+      shell: "ss -tlnp | grep :{{ app_port }}"
+      register: port_check
+      changed_when: false
+      failed_when: false
+
+    - name: Show port status
+      debug:
+        var: port_check.stdout_lines
