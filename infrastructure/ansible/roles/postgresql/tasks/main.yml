@@ -3,15 +3,25 @@
   ansible.builtin.apt:
     update_cache: yes
   check_mode: no
+  register: apt_update_status
+  until: apt_update_status is success
+  retries: 3
+  delay: 10
 
-- name: Install PostgreSQL packages
+- name: Install PostgreSQL and Repmgr packages
   ansible.builtin.apt:
     name:
       - "postgresql-{{ pg_version }}"
       - "postgresql-client-{{ pg_version }}"
+      - "postgresql-{{ pg_version }}-repmgr"
+      - repmgr
       - python3-psycopg2
       - acl
     state: present
+  register: apt_install_status
+  until: apt_install_status is success
+  retries: 5
+  delay: 15
 
 - name: Ensure PostgreSQL socket directory exists
   ansible.builtin.file:
@@ -62,28 +72,63 @@
     mode: "0640"
   notify: restart postgresql
 
-- name: Deploy .pgpass for root user
+- name: Deploy repmgr.conf
+  ansible.builtin.template:
+    src: repmgr.conf.j2
+    dest: /etc/repmgr.conf
+    owner: postgres
+    group: postgres
+    mode: "0644"
+
+- name: Deploy .pgpass for postgres user
   ansible.builtin.template:
     src: pgpass.j2
-    dest: /root/.pgpass
+    dest: /var/lib/postgresql/.pgpass
+    owner: postgres
+    group: postgres
+    mode: "0600"
+
+- name: Configure /etc/default/repmgrd for Ubuntu
+  ansible.builtin.copy:
+    dest: /etc/default/repmgrd
+    content: |
+      REPMGRD_ENABLED=yes
+      REPMGRD_CONF="/etc/repmgr.conf"
     owner: root
     group: root
-    mode: "0600"
+    mode: "0644"
+
+- name: Ensure repmgr log file exists with correct permissions
+  ansible.builtin.file:
+    path: /var/log/postgresql/repmgr.log
+    state: touch
+    owner: postgres
+    group: postgres
+    mode: "0664"
+  changed_when: false
 
 - name: Flush handlers
   ansible.builtin.meta: flush_handlers
 
-- name: Ensure PostgreSQL is started
+- name: Ensure PostgreSQL is started (Master only for initial setup)
   ansible.builtin.service:
     name: postgresql
     state: started
     enabled: yes
+  when: is_master | bool
 
-- name: Create replication user (Master)
+- name: Create repmgr user (Master)
   community.postgresql.postgresql_user:
-    name: "{{ pg_repl_user }}"
+    name: repmgr
     password: "{{ pg_repl_password }}"
-    role_attr_flags: "REPLICATION"
+    role_attr_flags: "SUPERUSER,REPLICATION"
+  become_user: postgres
+  when: is_master | bool
+
+- name: Create repmgr database (Master)
+  community.postgresql.postgresql_db:
+    name: repmgr
+    owner: repmgr
   become_user: postgres
   when: is_master | bool
 
@@ -94,49 +139,77 @@
   become_user: postgres
   when: is_master | bool
 
+- name: Register Master node in Repmgr
+  ansible.builtin.command: repmgr primary register -F
+  become_user: postgres
+  register: repmgr_primary
+  changed_when: "'registered as primary' in repmgr_primary.stdout"
+  failed_when:
+    - repmgr_primary.rc != 0
+    - "'already registered' not in repmgr_primary.stderr and 'already
+      registered' not in repmgr_primary.stdout"
+  retries: 3
+  delay: 5
+  until: repmgr_primary.rc == 0 or 'already registered' in repmgr_primary.stderr
+    or 'already registered' in repmgr_primary.stdout
+  when: is_master | bool
+
 - name: Check if replica is initialized (Slave)
   ansible.builtin.stat:
     path: "{{ pg_data_dir }}/standby.signal"
   register: standby_signal
   when: not is_master | bool
 
-- name: Initialize replica (Slave)
+- name: Initialize replica via Repmgr (Slave)
   block:
-    - name: Stop PostgreSQL
+    - name: Stop PostgreSQL on Slave
       ansible.builtin.service:
         name: postgresql
         state: stopped
 
-    - name: Wipe data directory
+    - name: Wipe PG data directory
       ansible.builtin.file:
         path: "{{ pg_data_dir }}"
         state: absent
 
-    - name: Run pg_basebackup
+    - name: Clone standby via repmgr
       ansible.builtin.command: >
-        pg_basebackup -h {{ pg_master_ip }} -D {{ pg_data_dir }} -U {{
-        pg_repl_user }} -v -P -X stream -R
+        repmgr -h {{ db_node_01 }} -U repmgr -d repmgr -f /etc/repmgr.conf
+        standby clone -F
       become_user: postgres
       environment:
         PGPASSWORD: "{{ pg_repl_password }}"
-      changed_when: true
+      register: clone_result
+      retries: 3
+      delay: 10
+      until: clone_result.rc == 0
 
-    - name: Start PostgreSQL
+    - name: Start PostgreSQL on Slave
       ansible.builtin.service:
         name: postgresql
         state: started
+
+    - name: Register Standby node in Repmgr
+      ansible.builtin.command: repmgr standby register -F
+      become_user: postgres
+      register: repmgr_standby
+      changed_when: "'registered as standby' in repmgr_standby.stdout"
+      failed_when:
+        - repmgr_standby.rc != 0
+        - "'already registered' not in repmgr_standby.stderr and 'already
+          registered' not in repmgr_standby.stdout"
+      retries: 3
+      delay: 5
+      until: repmgr_standby.rc == 0 or 'already registered' in repmgr_standby.stderr
+        or 'already registered' in repmgr_standby.stdout
   when: not is_master | bool and not standby_signal.stat.exists
 
 - name: Setup Gitea database
   ansible.builtin.include_tasks: gitea.yml
-
-- name: Verify replication lag (Master)
-  community.postgresql.postgresql_query:
-    query: "SELECT abs(pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn)) AS lag
-      FROM pg_stat_replication"
-  become_user: postgres
-  register: repl_lag
   when: is_master | bool
-  failed_when:
-    - repl_lag.query_result | length > 0
-    - repl_lag.query_result[0].lag | default(0) | int > 1048576
+
+- name: Ensure repmgrd (Auto-Failover Daemon) is started
+  ansible.builtin.service:
+    name: repmgrd
+    state: started
+    enabled: yes

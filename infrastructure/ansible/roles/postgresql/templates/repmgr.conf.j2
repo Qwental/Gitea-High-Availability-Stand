@@ -1,0 +1,17 @@
+node_id={{ node_id }}
+node_name='{{ inventory_hostname }}'
+conninfo='host={{ ansible_host }} user=repmgr dbname=repmgr connect_timeout=2'
+data_directory='{{ pg_data_dir }}'
+
+failover='automatic'
+promote_command='/usr/bin/repmgr standby promote -f /etc/repmgr.conf --log-to-file'
+follow_command='/usr/bin/repmgr standby follow -f /etc/repmgr.conf --log-to-file --upstream-node-id=%n'
+
+monitor_interval_secs=2
+connection_check_type='ping'
+reconnect_attempts=3
+reconnect_interval=3
+
+log_level='INFO'
+log_facility='STDERR'
+log_file='/var/log/postgresql/repmgr.log'
