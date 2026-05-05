@@ -1,0 +1,10 @@
+---
+- name: Restart NFS-Ganesha
+  ansible.builtin.service:
+    name: nfs-ganesha
+    state: restarted
+
+- name: Restart Keepalived
+  ansible.builtin.service:
+    name: keepalived
+    state: restarted

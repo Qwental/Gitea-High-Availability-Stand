@@ -1,0 +1,29 @@
+NFS_Core_Param {
+    # совместимость с docker
+    Use_DBUS = False;
+    Enable_NLM = False;
+    MNT_Port = 20048;
+    NFS_Port = 2049;
+}
+
+NFS_Storage_Param {
+    # Разрешаем отвечать на любые IP (включая VIP)
+    Bind_Addr = 0.0.0.0;
+}
+
+
+EXPORT {
+    Export_Id = 1;
+    Path = "/";
+    Pseudo = "/var/export/gitea";
+    Access_Type = RW;
+    Squash = No_Root_Squash;
+    Anon_Uid = 1000;
+    Anon_Gid = 1000;
+
+    FSAL {
+        Name = "GLUSTER";
+        Hostname = "127.0.0.1";
+        Volume = "gitea_vol";
+    }
+}

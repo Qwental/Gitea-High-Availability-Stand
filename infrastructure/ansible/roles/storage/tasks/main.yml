@@ -1,0 +1,118 @@
+---
+- name: Install dependencies
+  ansible.builtin.apt:
+    name:
+      - glusterfs-server
+      - nfs-ganesha
+      - nfs-ganesha-gluster
+      - rpcbind
+    state: present
+    update_cache: yes
+  retries: 3
+  delay: 10
+
+- name: Start required base services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop:
+    - rpcbind
+    - glusterd
+
+- name: Probe GlusterFS peers
+  ansible.builtin.command: gluster peer probe 172.20.0.42
+  when: inventory_hostname == 'storage-01'
+  register: peer_probe
+  changed_when: "'success' in peer_probe.stdout"
+  failed_when: false
+
+- name: Ensure correct ownership for Gitea data on GlusterFS brick
+  ansible.builtin.file:
+    path: /data/brick1/gv0
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+
+- name: Create GlusterFS volume
+  ansible.builtin.command: >
+    gluster volume create gitea_vol replica 2 172.20.0.41:/data/brick1/gv0
+    172.20.0.42:/data/brick1/gv0 force
+  when: inventory_hostname == 'storage-01'
+  register: gluster_create
+  changed_when: "'success' in gluster_create.stdout"
+  failed_when: "'already exists' not in gluster_create.stderr and gluster_create.rc != 0"
+
+- name: Start GlusterFS volume
+  ansible.builtin.command: gluster volume start gitea_vol
+  when: inventory_hostname == 'storage-01'
+  register: gluster_start
+  changed_when: "'success' in gluster_start.stdout"
+  failed_when: "'already started' not in gluster_start.stderr and gluster_start.rc != 0"
+  notify: Restart NFS-Ganesha
+
+# - name: Temporarily mount GlusterFS to set volume permissions
+#   ansible.posix.mount:
+#     src: localhost:/gitea_vol
+#     path: /mnt/tmp_gv0
+#     fstype: glusterfs
+#     state: mounted
+#   when: inventory_hostname == 'storage-01'
+
+# - name: Ensure correct ownership for Gitea volume root
+#   ansible.builtin.file:
+#     path: /mnt/tmp_gv0
+#     state: directory
+#     owner: "1000"
+#     group: "1000"
+#     mode: "0750"
+#   when: inventory_hostname == 'storage-01'
+
+# - name: Unmount temporary GlusterFS mount
+#   ansible.posix.mount:
+#     path: /mnt/tmp_gv0
+#     state: unmounted
+#   when: inventory_hostname == 'storage-01'
+
+- name: Create required Ganesha directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /var/run/ganesha
+    - /var/log/ganesha
+    - /etc/systemd/system/nfs-ganesha.service.d
+
+- name: Override NFS-Ganesha systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nfs-ganesha.service.d/override.conf
+    content: |
+      [Service]
+      Type=simple
+      ProtectSystem=off
+      ProtectHome=off
+      PrivateTmp=no
+      ExecStart=
+      ExecStart=/usr/bin/ganesha.nfsd -F -L /var/log/ganesha/ganesha.log -f /etc/ganesha/ganesha.conf
+    mode: "0644"
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Configure NFS-Ganesha export
+  ansible.builtin.template:
+    src: ganesha.conf.j2
+    dest: /etc/ganesha/ganesha.conf
+  notify: Restart NFS-Ganesha
+
+- name: Flush handlers to ensure Ganesha is ready before clients connect
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure NFS-Ganesha is running
+  ansible.builtin.service:
+    name: nfs-ganesha
+    state: started
+    enabled: yes
