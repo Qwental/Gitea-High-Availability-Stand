@@ -1,0 +1,36 @@
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+  check_mode: no
+  register: apt_update_status
+  until: apt_update_status is success
+  retries: 3
+  delay: 5
+
+- name: Install HAProxy
+  ansible.builtin.apt:
+    name: haproxy
+    state: present
+  register: apt_install_status
+  until: apt_install_status is success
+  retries: 3
+  delay: 5
+
+- name: Deploy HAProxy configuration
+  ansible.builtin.template:
+    src: "{{ proxy_type }}.cfg.j2"
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart haproxy
+
+- name: Flush handlers to apply config
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure HAProxy is started and enabled
+  ansible.builtin.service:
+    name: haproxy
+    state: started
+    enabled: yes

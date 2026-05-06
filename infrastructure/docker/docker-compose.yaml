@@ -17,15 +17,6 @@ services:
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "db-data-02:/var/lib/postgresql" ]
     cap_add: [ NET_ADMIN, NET_RAW ]
 
-  db-proxy:
-    image: haproxy:2.8
-    container_name: db-proxy
-    networks:
-      lab-internal-net: { ipv4_address: $IP_DB_VIP }
-    volumes:
-      - ../haproxy/db.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-    restart: always
-
   gitea-node-01:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: gitea-node-01
@@ -43,16 +34,6 @@ services:
       lab-internal-net: { ipv4_address: $IP_GITEA_NODE_02 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "gitea-data-02:/var/lib/gitea" ]
     cap_add: [ NET_ADMIN, NET_RAW ]
-
-  gitea-proxy:
-    image: haproxy:2.8
-    container_name: gitea-proxy
-    ports: [ "3000:3000", "2222:22" ]
-    networks:
-      lab-internal-net: { ipv4_address: $IP_GITEA_VIP }
-    volumes:
-      - ../haproxy/gitea.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-    restart: always
 
   jenkins-master:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
@@ -96,14 +77,33 @@ services:
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "nfs-data-02:/data/brick1" ]
     cap_add: [ NET_ADMIN, NET_RAW, SYS_ADMIN ]
 
+  db-proxy:
+    build: { context: ., dockerfile: node-ubuntu.Dockerfile }
+    container_name: db-proxy
+    privileged: true
+    networks:
+      lab-internal-net: { ipv4_address: $IP_DB_VIP }
+    volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw" ]
+    cap_add: [ NET_ADMIN, NET_RAW ]
+
+  gitea-proxy:
+    build: { context: ., dockerfile: node-ubuntu.Dockerfile }
+    container_name: gitea-proxy
+    privileged: true
+    ports: [ "3000:3000", "2222:2222" ]
+    networks:
+      lab-internal-net: { ipv4_address: $IP_GITEA_VIP }
+    volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw" ]
+    cap_add: [ NET_ADMIN, NET_RAW ]
+
   nfs-proxy:
-    image: haproxy:2.8
+    build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: nfs-proxy
+    privileged: true
     networks:
       lab-internal-net: { ipv4_address: $IP_STORAGE_VIP }
-    volumes:
-      - ../haproxy/nfs.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-    restart: always
+    volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw" ]
+    cap_add: [ NET_ADMIN, NET_RAW ]
 
 networks:
   lab-internal-net:

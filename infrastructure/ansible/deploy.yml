@@ -12,6 +12,12 @@
   roles:
     - role: postgresql
       tags: postgres
+      
+- name: Deploy HAProxy Load Balancers
+  hosts: proxies
+  become: yes
+  roles:
+    - haproxy
 
 - name: Deploy Gitea Servers
   hosts: gitea_servers

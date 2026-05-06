@@ -11,7 +11,7 @@ listen gitea-web
     server gitea-node-02 172.20.0.12:3000 check inter 2s backup
 
 listen gitea-ssh
-    bind *:22
+    bind *:2222
     mode tcp
     server gitea-node-01 172.20.0.11:22 check inter 2s
     server gitea-node-02 172.20.0.12:22 check inter 2s backup
