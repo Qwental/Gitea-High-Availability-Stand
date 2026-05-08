@@ -17,3 +17,5 @@ gitea_db_password: "{{ vault_gitea_db_password }}"
 gitea_http_port: 3000
 gitea_domain: "localhost"
 gitea_root_url: "http://localhost:3000/"
+
+email_for_alerts: "{{ vault_email_for_alerts }}"

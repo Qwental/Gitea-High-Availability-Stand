@@ -1,0 +1,117 @@
+---
+- name: Install required utilities
+  ansible.builtin.apt:
+    name:
+      - unzip
+      - tar
+    state: present
+    update_cache: yes
+  register: apt_res
+  until: apt_res is success
+  retries: 3
+  delay: 5
+
+- name: Set timezone
+  ansible.builtin.command:
+    cmd: timedatectl set-timezone Europe/Moscow
+  changed_when: false
+
+- name: Create monitoring system group
+  ansible.builtin.group:
+    name: monitoring
+    system: yes
+
+- name: Create monitoring system user
+  ansible.builtin.user:
+    name: monitoring
+    group: monitoring
+    system: yes
+    create_home: no
+    shell: /usr/sbin/nologin
+
+- name: Download and unpack Node Exporter
+  ansible.builtin.unarchive:
+    src: "https://github.com/prometheus/node_exporter/releases/download/v{{
+      node_exporter_version }}/node_exporter-{{ node_exporter_version
+      }}.linux-arm64.tar.gz"
+    dest: /tmp/
+    remote_src: yes
+  register: node_exporter_download
+  retries: 3
+  delay: 5
+  until: node_exporter_download is success
+
+- name: Move Node Exporter binary
+  ansible.builtin.copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-arm64/node_exporter"
+    dest: /usr/local/bin/node_exporter
+    mode: "0755"
+    remote_src: yes
+  notify: restart node_exporter
+
+- name: Configure journald
+  ansible.builtin.import_tasks: journald.yml
+
+- name: Download Promtail
+  ansible.builtin.get_url:
+    url: "https://github.com/grafana/loki/releases/download/v{{ promtail_version
+      }}/promtail-linux-arm64.zip"
+    dest: /tmp/promtail-linux-arm64.zip
+  register: promtail_download
+  retries: 3
+  delay: 5
+  until: promtail_download is success
+
+- name: Unpack Promtail binary
+  ansible.builtin.unarchive:
+    src: /tmp/promtail-linux-arm64.zip
+    dest: /usr/local/bin/
+    remote_src: yes
+    mode: "0755"
+  notify: restart promtail
+
+- name: Create Promtail config directory
+  ansible.builtin.file:
+    path: /etc/promtail
+    state: directory
+    owner: monitoring
+    group: monitoring
+
+- name: Deploy Promtail config
+  ansible.builtin.template:
+    src: promtail.yaml.j2
+    dest: /etc/promtail/promtail.yaml
+    owner: monitoring
+    group: monitoring
+    mode: "0644"
+  notify: restart promtail
+
+- name: Deploy Node Exporter systemd unit
+  ansible.builtin.template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    mode: "0644"
+  notify: restart node_exporter
+
+- name: Deploy Promtail systemd unit
+  ansible.builtin.template:
+    src: promtail.service.j2
+    dest: /etc/systemd/system/promtail.service
+    mode: "0644"
+  notify: restart promtail
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Flush handlers to start agents
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure agents are started and enabled
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop:
+    - node_exporter
+    - promtail

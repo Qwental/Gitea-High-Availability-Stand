@@ -8,6 +8,10 @@
   retries: 3
   delay: 5
 
+- name: Set timezone
+  ansible.builtin.command:
+    cmd: timedatectl set-timezone Europe/Moscow
+  changed_when: false
 - name: Install HAProxy
   ansible.builtin.apt:
     name: haproxy

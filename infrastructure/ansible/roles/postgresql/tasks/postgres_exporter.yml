@@ -1,0 +1,71 @@
+---
+- name: Download postgres_exporter
+  ansible.builtin.unarchive:
+    src: "https://github.com/prometheus-community/postgres_exporter/releases/downlo\
+      ad/v0.15.0/postgres_exporter-0.15.0.linux-arm64.tar.gz"
+    dest: /tmp
+    remote_src: yes
+  register: postgres_exporter_download
+  until: postgres_exporter_download is success
+  retries: 5
+  delay: 10
+
+- name: Install postgres_exporter binary
+  ansible.builtin.copy:
+    src: /tmp/postgres_exporter-0.15.0.linux-arm64/postgres_exporter
+    dest: /usr/local/bin/postgres_exporter
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  register: postgres_exporter_install
+  until: postgres_exporter_install is success
+  retries: 3
+  delay: 5
+
+- name: Create postgres_exporter PostgreSQL user
+  community.postgresql.postgresql_user:
+    name: postgres_exporter
+    password: "{{ pg_exporter_password }}"
+    role_attr_flags: LOGIN
+  become_user: postgres
+  when: is_master | bool
+  register: postgres_exporter_user
+  until: postgres_exporter_user is success
+  retries: 5
+  delay: 10
+
+- name: Grant pg_monitor role to postgres_exporter
+  community.postgresql.postgresql_membership:
+    group: pg_monitor
+    target_roles:
+      - postgres_exporter
+  become_user: postgres
+  when: is_master | bool
+  register: postgres_exporter_grant
+  until: postgres_exporter_grant is success
+  retries: 5
+  delay: 10
+
+- name: Deploy postgres_exporter systemd service
+  ansible.builtin.template:
+    src: postgres_exporter.service.j2
+    dest: /etc/systemd/system/postgres_exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart postgres_exporter
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Enable and start postgres_exporter
+  ansible.builtin.service:
+    name: postgres_exporter
+    state: started
+    enabled: yes
+  register: postgres_exporter_service
+  until: postgres_exporter_service is success
+  retries: 5
+  delay: 10

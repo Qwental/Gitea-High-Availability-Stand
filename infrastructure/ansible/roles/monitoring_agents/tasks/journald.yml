@@ -1,0 +1,30 @@
+---
+- name: Ensure journald config directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Enable persistent journald storage
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/persistent.conf
+    content: |
+      [Journal]
+      Storage=persistent
+    mode: "0644"
+
+- name: Ensure persistent journal directory exists
+  ansible.builtin.file:
+    path: "/var/log/journal/{{ ansible_machine_id }}"
+    state: directory
+    owner: root
+    group: systemd-journal
+    mode: "2755"
+
+- name: Restart journald
+  ansible.builtin.systemd:
+    name: systemd-journald
+    state: restarted
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers

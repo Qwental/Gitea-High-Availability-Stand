@@ -31,6 +31,11 @@
     group: postgres
     mode: "2775"
 
+- name: Set timezone
+  ansible.builtin.command:
+    cmd: timedatectl set-timezone Europe/Moscow
+  changed_when: false
+  
 - name: Create systemd override directory for PostgreSQL
   ansible.builtin.file:
     path: /etc/systemd/system/postgresql@.service.d
@@ -213,3 +218,6 @@
     name: repmgrd
     state: started
     enabled: yes
+
+- name: Install postgres_exporter
+  ansible.builtin.include_tasks: postgres_exporter.yml

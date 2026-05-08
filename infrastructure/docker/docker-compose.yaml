@@ -1,6 +1,8 @@
 services:
+
   db-node-01:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
+    hostname: db-node-01
     container_name: db-node-01
     privileged: true
     networks:
@@ -11,6 +13,7 @@ services:
   db-node-02:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: db-node-02
+    hostname: db-node-02
     privileged: true
     networks:
       lab-internal-net: { ipv4_address: $IP_DB_NODE_02 }
@@ -20,6 +23,7 @@ services:
   gitea-node-01:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: gitea-node-01
+    hostname: gitea-node-01
     privileged: true
     networks:
       lab-internal-net: { ipv4_address: $IP_GITEA_NODE_01 }
@@ -30,39 +34,17 @@ services:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: gitea-node-02
     privileged: true
+    hostname: gitea-node-02
     networks:
       lab-internal-net: { ipv4_address: $IP_GITEA_NODE_02 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "gitea-data-02:/var/lib/gitea" ]
     cap_add: [ NET_ADMIN, NET_RAW ]
 
-  jenkins-master:
-    build: { context: ., dockerfile: node-ubuntu.Dockerfile }
-    container_name: jenkins-master
-    privileged: true
-    networks:
-      lab-internal-net: { ipv4_address: $IP_JENKINS }
-    volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw" ]
-
-  jenkins-worker-01:
-    build: { context: ., dockerfile: node-ubuntu.Dockerfile }
-    container_name: jenkins-worker-01
-    privileged: true
-    networks:
-      lab-internal-net: { ipv4_address: $IP_WORKER }
-    volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw" ]
-
-  deploy-target-01:
-    build: { context: ., dockerfile: node-ubuntu.Dockerfile }
-    container_name: deploy-target-01
-    privileged: true
-    networks:
-      lab-internal-net: { ipv4_address: $IP_DEPLOY_TARGET }
-    volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw" ]
-
   storage-01:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: storage-01
     privileged: true
+    hostname: storage-01
     networks:
       lab-internal-net: { ipv4_address: $IP_STORAGE_NODE_01 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "nfs-data-01:/data/brick1" ]
@@ -72,6 +54,7 @@ services:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: storage-02
     privileged: true
+    hostname: storage-02
     networks:
       lab-internal-net: { ipv4_address: $IP_STORAGE_NODE_02 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "nfs-data-02:/data/brick1" ]
@@ -80,6 +63,7 @@ services:
   db-proxy:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: db-proxy
+    hostname: db-proxy
     privileged: true
     networks:
       lab-internal-net: { ipv4_address: $IP_DB_VIP }
@@ -90,6 +74,7 @@ services:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: gitea-proxy
     privileged: true
+    hostname: gitea-proxy
     ports: [ "3000:3000", "2222:2222" ]
     networks:
       lab-internal-net: { ipv4_address: $IP_GITEA_VIP }
@@ -100,10 +85,62 @@ services:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: nfs-proxy
     privileged: true
+    hostname: nfs-proxy
     networks:
       lab-internal-net: { ipv4_address: $IP_STORAGE_VIP }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw" ]
     cap_add: [ NET_ADMIN, NET_RAW ]
+
+  monitor-node-01:
+    build: { context: ., dockerfile: node-ubuntu.Dockerfile }
+    hostname: monitor-node-01
+    container_name: monitor-node-01
+    privileged: true
+    ports:
+      - "3001:3000" # Grafana
+      - "9090:9090" # Prometheus
+    networks:
+      lab-internal-net: { ipv4_address: $IP_MONITOR_NODE_01 }
+    volumes:
+      - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+      - "prometheus-data:/var/lib/prometheus"
+      - "loki-data:/var/lib/loki"
+      - "alertmanager-data:/var/lib/alertmanager"
+      - "grafana-data:/var/lib/grafana"
+    cap_add: [ NET_ADMIN, NET_RAW ]
+
+  backup-srv:
+    build: { context: ., dockerfile: node-ubuntu.Dockerfile }
+    container_name: backup-srv
+    hostname: backup-srv
+
+    privileged: true
+
+    restart: unless-stopped
+
+    networks:
+      lab-internal-net:
+        ipv4_address: $IP_BACKUP_NODE
+
+    volumes:
+      - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+
+      - "backup-data:/backup"
+
+      - "db-data-01:/source/db-node-01:ro"
+      - "db-data-02:/source/db-node-02:ro"
+      - "gitea-data-01:/source/gitea-node-01:ro"
+      - "gitea-data-02:/source/gitea-node-02:ro"
+      - "nfs-data-01:/source/storage-01:ro"
+      - "nfs-data-02:/source/storage-02:ro"
+
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_ADMIN
+
+    environment:
+      TZ: UTC
 
 networks:
   lab-internal-net:
@@ -121,3 +158,8 @@ volumes:
   gitea-data-02:
   nfs-data-01:
   nfs-data-02:
+  prometheus-data:
+  loki-data:
+  alertmanager-data:
+  grafana-data:
+  backup-data:

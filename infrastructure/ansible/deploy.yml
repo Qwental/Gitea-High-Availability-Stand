@@ -12,7 +12,7 @@
   roles:
     - role: postgresql
       tags: postgres
-      
+
 - name: Deploy HAProxy Load Balancers
   hosts: proxies
   become: yes
@@ -25,3 +25,15 @@
   roles:
     - role: gitea
       tags: gitea
+
+- name: Deploy Monitoring Agents (Node Exporter & Promtail)
+  hosts: all
+  become: yes
+  roles:
+    - monitoring_agents
+
+- name: Deploy Monitoring Server (Prometheus, Loki, Grafana)
+  hosts: monitoring_server
+  become: yes
+  roles:
+    - monitoring_server

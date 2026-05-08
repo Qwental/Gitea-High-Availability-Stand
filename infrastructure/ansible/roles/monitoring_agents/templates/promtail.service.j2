@@ -1,0 +1,13 @@
+[Unit]
+Description=Promtail log collector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Type=simple
+ExecStart=/usr/local/bin/promtail-linux-arm64 -config.file=/etc/promtail/promtail.yaml
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

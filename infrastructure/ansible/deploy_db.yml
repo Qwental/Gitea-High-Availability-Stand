@@ -1,6 +1,0 @@
-- name: Deploy HA PostgreSQL Cluster
-  hosts: db_cluster
-  become: yes
-  roles:
-    - postgresql
-    - keepalived

@@ -8,3 +8,8 @@
   ansible.builtin.service:
     name: postgresql
     state: restarted
+
+- name: restart postgres_exporter
+  ansible.builtin.service:
+    name: postgres_exporter
+    state: restarted

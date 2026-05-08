@@ -18,6 +18,11 @@
     state: started
     enabled: yes
 
+- name: Set timezone
+  ansible.builtin.command:
+    cmd: timedatectl set-timezone Europe/Moscow
+  changed_when: false
+  
 - name: Create gitea system group
   ansible.builtin.group:
     name: "{{ gitea_group }}"

@@ -5,6 +5,7 @@ ENV container=docker
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     systemd \
+    tzdata \
     systemd-sysv \
     dbus \
     dbus-user-session \
