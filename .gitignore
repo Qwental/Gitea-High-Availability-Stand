@@ -1,5 +1,5 @@
 .env
 vault.yml
 *.txt
-
+infrastructure/ansible/.vault_pass
 .DS_STORE
