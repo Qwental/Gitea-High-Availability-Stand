@@ -1,61 +1,82 @@
-# postgresql
+# Описание роли: postgresql
 
-Роль для развертывания и настройки отказоустойчивого узла СУБД PostgreSQL 14 в контейнеризованной среде с поддержкой потоковой репликации и автоматическим созданием БД для Gitea.
+Роль предназначена для развертывания отказоустойчивого кластера PostgreSQL в режиме Master-Replica с автоматическим failover под управлением `repmgr` и `repmgrd`. Включает настройку базы данных для приложения и экспорт метрик.
 
-## Requirements
+## Структура задач (Tasks)
 
-- **Ansible** >= 2.14
-- **OS**: Ubuntu 22.04 (Docker Container)
-- **Python** >= 3.10
-- **Collections**: `community.postgresql` (необходим для управления БД, пользователями и правами)
+Роль разделена на три логических плейбука (файла задач):
 
-## Role Variables
+### 1. `main.yml` (Core & HA Configuration)
 
-К базовым настройкам репликации добавлены переменные для инициализации базы данных Gitea:
+Основной процесс инициализации кластера и настройки репликации.
 
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `pg_version` | "14" | Версия устанавливаемого пакета PostgreSQL |
-| `pg_data_dir` | "/var/lib/postgresql/14/main" | Путь к директории данных СУБД |
-| `pg_conf_dir` | "/etc/postgresql/14/main" | Путь к конфигурационным файлам |
-| `pg_repl_user` | "replicator" | Имя системного пользователя для репликации |
-| `pg_repl_password` | "change_me" | Пароль пользователя репликации |
-| `pg_master_ip` | "172.20.0.11" | IP-адрес мастера для инициализации репликации |
-| `is_master` | false | Флаг роли узла (true для Master, false для Slave) |
-| **Gitea Integration** | | |
-| `gitea_db_user` | "gitea" | Имя пользователя базы данных Gitea |
-| `gitea_db_password` | `""` | Пароль пользователя (обязательно через Vault) |
-| `gitea_db_name` | "gitea" | Название целевой базы данных |
+* **Установка пакетов**: PostgreSQL (предположительно v14/15), `repmgr`.
+* **Инициализация (Bootstrapping)**:
+* Поведение ветвится на основе переменной `is_master | bool`.
+* **Master**: Инициализирует первичный кластер, настраивает `postgresql.conf`, `pg_hba.conf`, `repmgr.conf` и регистрирует primary-ноду (`repmgr primary register`).
+* **Standby (Replica)**: Ожидает доступности мастера, клонирует данные через `repmgr standby clone` и регистрирует себя как реплику.
 
-## Tasks Description
 
-Роль разделена на логические блоки:
-1. **`main.yml`**: Основной цикл установки PG, настройки `postgresql.conf`, `pg_hba.conf` и управления состоянием службы. Здесь же реализована логика `pg_basebackup` для реплик.
-2. **`gitea.yml`**: Создание пользователя, базы данных и назначение привилегий. Эти задачи выполняются **только на Master-узле** (`when: is_master | bool`), так как на репликах БД находится в режиме Read-Only.
+* **Workaround для Docker-контейнеров**: Реализовано явное создание директории `/etc/postgresql/<version>/main`. *Причина*: при пересоздании контейнера эфемерная директория `/etc` очищается, но Docker Volume с `/var/lib/postgresql` сохраняется, из-за чего стандартный скрипт `pg_createcluster` (Debian/Ubuntu) пропускает генерацию конфигов.
+* **Запуск `repmgrd**`: Включение демона для автоматического мониторинга и failover.
 
-## Example Playbook
+### 2. `gitea.yml` (Application DB Setup)
+
+Идемпотентная настройка целевой базы данных.
+
+* Выполняется **только на мастере** (`when: is_master | bool`).
+* Выполняет создание базы данных (`gitea`) и пользователя (`gitea`) с нужными правами.
+* *Зависимость*: Требует корректной настройки `pg_hba.conf` для подключения модуля `postgresql_db`/`postgresql_user` (локально через сокет или TCP).
+
+### 3. `postgres_exporter.yml` (Observability)
+
+Интеграция с подсистемой мониторинга Prometheus.
+
+* Загрузка и установка бинарного файла `postgres_exporter`.
+* Настройка конфигурации аутентификации (шаблон `pgpass.j2` для пользователя мониторинга).
+* Создание и запуск systemd-юнита `postgres_exporter.service`.
+
+## Переменные роли (Role Variables)
+
+### Логика кластера (host_vars/inventory)
+
+| Переменная | Описание |
+| --- | --- |
+| `is_master` | `true` для `db-node-01`, `false` для `db-node-02`. Определяет флоу инициализации (Master/Standby). |
+
+### База данных и доступы (group_vars/vault)
+
+| Переменная | Описание |
+| --- | --- |
+| `pg_admin_password` | Пароль суперпользователя базы данных (Vault). |
+| `pg_repl_password` | Пароль пользователя `repmgr` для стриминговой репликации (Vault). |
+| `gitea_db_name` | Имя базы данных для Gitea. |
+| `gitea_db_user` | Имя пользователя для Gitea. |
+| `gitea_db_password` | Пароль пользователя Gitea (Vault). |
+
+## Архитектурные решения и особенности (Architecture Notes)
+
+1. **Replication Topology**: Асинхронная потоковая репликация (streaming replication). Управляется `repmgr`.
+2. **Failover (repmgrd)**: Демон непрерывно пингует мастера. При недоступности (параметры `reconnect_attempts`, `reconnect_interval`) реплика автоматически повышается до мастера (`repmgr standby promote`).
+3. **Implicit Dependencies**:
+* Для корректной работы `gitea.yml` требуется, чтобы PostgreSQL был полностью запущен, а порт 5432 доступен.
+* Роль жестко зависит от роли `keepalived`, которая управляет плавающим VIP-адресом. Переключение VIP при смене мастера должно синхронизироваться (обычно через параметры `event_notification_command` в `repmgr.conf`), чтобы трафик Gitea отправлялся на новый мастер.
+
+
+4. **Уязвимости (Weak points)**:
+* Отсутствие защиты от Split-Brain. Если связь между `db-node-01` и `db-node-02` пропадает, но обе ноды видят сеть, `repmgrd` может повысить реплику до мастера, создав два активных мастера. Требуется настройка `witness` ноды или внешнего механизма ограждения (fencing/STONITH).
+* Ошибки `pg_hba.conf`: Диагностика показывает, что доступ по сокету для служебных пользователей требует явной конфигурации (например, замена `peer` на `md5`/`scram-sha-256` или маппинг пользователей ОС).
+
+
+
+## Пример использования (Example Playbook)
 
 ```yaml
-- hosts: db_cluster
+- name: Deploy PostgreSQL Cluster
+  hosts: db_cluster
+  become: yes
   roles:
     - role: postgresql
-      vars:
-        is_master: "{{ inventory_hostname == 'db-01' }}"
-        pg_repl_password: "{{ vault_pg_repl_password }}"
-        gitea_db_password: "{{ vault_gitea_db_password }}"
+      tags: database
+
 ```
-
-## Structure Notes
-
-Для корректной работы задач Gitea убедитесь, что `tasks/main.yml` включает в себя `gitea.yml`:
-```yaml
-- include_tasks: gitea.yml
-  tags: [gitea, db]
-```
-
-## Technical Details
-- **Идемпотентность**: Создание объектов БД проверяет наличие существующих записей.
-- **Безопасность**: Для управления базой используется `become_user: postgres`.
-- **Репликация**: Настройки в `postgresql.conf.j2` адаптированы под `hot_standby`.
-
-

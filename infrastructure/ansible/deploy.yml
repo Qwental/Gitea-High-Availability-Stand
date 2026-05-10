@@ -5,6 +5,8 @@
   roles:
     - role: storage
       tags: storage
+    - role: keepalived
+      tags: keepalived
 
 - name: Deploy Database Cluster
   hosts: db_cluster
@@ -12,28 +14,49 @@
   roles:
     - role: postgresql
       tags: postgres
+    - role: keepalived
+      tags: keepalived
 
-- name: Deploy HAProxy Load Balancers
-  hosts: proxies
+- name: Deploy Gitea HAProxy Load Balancers
+  hosts: gitea_proxies
   become: yes
   roles:
-    - haproxy
+    - role: haproxy
+      tags: haproxy
+    - role: keepalived
+      tags: keepalived
 
-- name: Deploy Gitea Servers
+- name: Deploy Application Layer (Gitea)
   hosts: gitea_servers
   become: true
   roles:
     - role: gitea
       tags: gitea
 
-- name: Deploy Monitoring Agents (Node Exporter & Promtail)
+- name: Deploy Monitoring Agents
   hosts: all
-  become: yes
+  become: true
   roles:
-    - monitoring_agents
+    - role: monitoring_agents
+      tags: monitoring
 
-- name: Deploy Monitoring Server (Prometheus, Loki, Grafana)
+- name: Deploy Centralized Monitoring and Logging
   hosts: monitoring_server
-  become: yes
+  become: true
   roles:
-    - monitoring_server
+    - role: monitoring_server
+      tags: monitoring
+
+- name: Deploy Backup Server
+  hosts: backup
+  become: true
+  roles:
+    - role: restic_server
+      tags: backup_srv
+
+- name: Deploy Backup Agents
+  hosts: db_cluster:storage_cluster
+  become: true
+  roles:
+    - role: restic_agent
+      tags: backup_agents

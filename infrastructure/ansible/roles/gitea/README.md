@@ -1,38 +1,64 @@
-Role Name
-=========
+# Описание роли: gitea
 
-A brief description of the role goes here.
+Роль предназначена для идемпотентного развертывания Gitea в режиме Active-Passive/Active-Active с использованием внешнего NFS-хранилища и базы данных.
 
-Requirements
-------------
+## Требования (Requirements)
 
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+* **ОС**: Ubuntu/Debian (используется модуль `ansible.builtin.apt`).
+* **Зависимости коллекций**: `ansible.posix` (для модуля `mount`).
+* **Инфраструктура**:
+* Доступный NFS-сервер (определяется переменной `storage_vip`).
+* Доступная база данных (определяется переменными `gitea_db_*`).
+* Доступ в интернет для загрузки бинарного файла Gitea.
 
-Role Variables
---------------
+### Основные настройки приложения
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+| Переменная | Описание |
+| --- | --- |
+| `gitea_version` | Версия Gitea для загрузки (например, `1.21.0`). |
+| `target_arch` | Архитектура бинарного файла (например, `amd64`, `arm64`). |
+| `gitea_user` | Системный пользователь для запуска Gitea. |
+| `gitea_group` | Системная группа для запуска Gitea. |
+| `gitea_home` | Домашняя директория пользователя Gitea. |
+| `gitea_work_dir` | Рабочая директория (обычно `/var/lib/gitea`). |
+| `gitea_conf_dir` | Директория конфигурации (обычно `/etc/gitea`). |
+| `gitea_domain` | FQDN или IP-адрес для `DOMAIN` и `SSH_DOMAIN`. |
+| `gitea_http_port` | Порт, на котором Gitea слушает HTTP-запросы (по умолчанию 3000 в tasks). |
+| `gitea_root_url` | Полный URL для доступа к Gitea (используется в `ROOT_URL`). |
 
-Dependencies
-------------
+### Настройки интеграции
 
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
+| Переменная | Описание |
+| --- | --- |
+| `storage_vip` | IP-адрес или hostname NFS-сервера для монтирования `/var/lib/gitea/data/gitea-repositories`. |
+| `gitea_db_type` | Тип базы данных (например, `postgres`). |
+| `gitea_db_host` | Хост и порт базы данных (например, `172.20.0.10:5432`). |
+| `gitea_db_name` | Имя базы данных Gitea. |
+| `gitea_db_user` | Пользователь базы данных. |
 
-Example Playbook
-----------------
+### Секреты (должны храниться в Ansible Vault)
 
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
+| Переменная | Описание |
+| --- | --- |
+| `gitea_db_password` | Пароль от базы данных. |
+| `vault_gitea_secret_key` | Секретный ключ для конфигурации (`SECRET_KEY`). |
+| `vault_gitea_internal_token` | Внутренний токен Gitea (`INTERNAL_TOKEN`). |
+| `vault_gitea_jwt_secret` | Секрет для OAuth2 JWT (`JWT_SECRET`). |
+| `vault_gitea_admin_username` | Логин первичного администратора. |
+| `vault_gitea_admin_password` | Пароль первичного администратора. |
+| `vault_gitea_admin_email` | Email первичного администратора. |
 
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
 
-License
--------
+## Пример использования (Example Playbook)
 
-BSD
+```yaml
+- name: Deploy Gitea Application
+  hosts: gitea_servers
+  become: true
+  vars_files:
+    - vault.yml
+  roles:
+    - role: gitea
+      tags: gitea
 
-Author Information
-------------------
-
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+```

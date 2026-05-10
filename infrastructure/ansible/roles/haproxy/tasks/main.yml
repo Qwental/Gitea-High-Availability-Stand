@@ -8,10 +8,21 @@
   retries: 3
   delay: 5
 
-- name: Set timezone
-  ansible.builtin.command:
-    cmd: timedatectl set-timezone Europe/Moscow
-  changed_when: false
+- name: Set timezone to Europe/Moscow
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Europe/Moscow
+    dest: /etc/localtime
+    state: link
+    force: yes
+
+- name: Update /etc/timezone file
+  ansible.builtin.copy:
+    content: "Europe/Moscow\n"
+    dest: /etc/timezone
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Install HAProxy
   ansible.builtin.apt:
     name: haproxy

@@ -1,27 +1,17 @@
 ---
-- name: Download postgres_exporter
+- name: Download and install Postgres Exporter
   ansible.builtin.unarchive:
     src: "https://github.com/prometheus-community/postgres_exporter/releases/downlo\
-      ad/v0.15.0/postgres_exporter-0.15.0.linux-arm64.tar.gz"
-    dest: /tmp
+      ad/v{{ pg_exporter_version }}/postgres_exporter-{{ pg_exporter_version
+      }}.linux-{{ target_arch }}.tar.gz"
+    dest: /usr/local/bin/
     remote_src: yes
-  register: postgres_exporter_download
-  until: postgres_exporter_download is success
-  retries: 5
-  delay: 10
-
-- name: Install postgres_exporter binary
-  ansible.builtin.copy:
-    src: /tmp/postgres_exporter-0.15.0.linux-arm64/postgres_exporter
-    dest: /usr/local/bin/postgres_exporter
-    owner: root
-    group: root
-    mode: "0755"
-    remote_src: yes
-  register: postgres_exporter_install
-  until: postgres_exporter_install is success
-  retries: 3
-  delay: 5
+    extra_opts:
+      - "--strip-components=1"
+      - "postgres_exporter-{{ pg_exporter_version }}.linux-{{ target_arch
+        }}/postgres_exporter"
+    creates: /usr/local/bin/postgres_exporter
+  notify: restart postgres_exporter
 
 - name: Create postgres_exporter PostgreSQL user
   community.postgresql.postgresql_user:

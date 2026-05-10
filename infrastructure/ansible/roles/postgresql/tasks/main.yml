@@ -31,11 +31,21 @@
     group: postgres
     mode: "2775"
 
-- name: Set timezone
-  ansible.builtin.command:
-    cmd: timedatectl set-timezone Europe/Moscow
-  changed_when: false
-  
+- name: Set timezone to Europe/Moscow
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Europe/Moscow
+    dest: /etc/localtime
+    state: link
+    force: yes
+
+- name: Update /etc/timezone file
+  ansible.builtin.copy:
+    content: "Europe/Moscow\n"
+    dest: /etc/timezone
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Create systemd override directory for PostgreSQL
   ansible.builtin.file:
     path: /etc/systemd/system/postgresql@.service.d
@@ -58,6 +68,14 @@
 - name: Reload systemd daemon
   ansible.builtin.systemd:
     daemon_reload: yes
+
+- name: Ensure PostgreSQL configuration directory exists
+  ansible.builtin.file:
+    path: "{{ pg_conf_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0755"
 
 - name: Deploy postgresql.conf
   ansible.builtin.template:
@@ -115,6 +133,16 @@
 - name: Flush handlers
   ansible.builtin.meta: flush_handlers
 
+- name: Check if PostgreSQL data directory is initialized
+  ansible.builtin.find:
+    paths: "{{ pg_data_dir }}"
+  register: pg_data_check
+
+- name: Initialize PostgreSQL database cluster
+  ansible.builtin.command: /usr/lib/postgresql/{{ pg_version }}/bin/initdb -D {{ pg_data_dir }}
+  become_user: postgres
+  when: pg_data_check.matched == 0
+
 - name: Ensure PostgreSQL is started (Master only for initial setup)
   ansible.builtin.service:
     name: postgresql
@@ -122,11 +150,19 @@
     enabled: yes
   when: is_master | bool
 
+- name: Wait for PostgreSQL to start accepting connections
+  ansible.builtin.wait_for:
+    path: "/var/run/postgresql/.s.PGSQL.5432"
+    state: started
+    timeout: 30
+  when: is_master | bool
+
 - name: Create repmgr user (Master)
   community.postgresql.postgresql_user:
     name: repmgr
     password: "{{ pg_repl_password }}"
     role_attr_flags: "SUPERUSER,REPLICATION"
+    login_unix_socket: "/var/run/postgresql"
   become_user: postgres
   when: is_master | bool
 

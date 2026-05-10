@@ -8,7 +8,6 @@ services:
     networks:
       lab-internal-net: { ipv4_address: $IP_DB_NODE_01 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "db-data-01:/var/lib/postgresql" ]
-    cap_add: [ NET_ADMIN, NET_RAW ]
 
   db-node-02:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
@@ -18,7 +17,6 @@ services:
     networks:
       lab-internal-net: { ipv4_address: $IP_DB_NODE_02 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "db-data-02:/var/lib/postgresql" ]
-    cap_add: [ NET_ADMIN, NET_RAW ]
 
   gitea-node-01:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
@@ -28,7 +26,6 @@ services:
     networks:
       lab-internal-net: { ipv4_address: $IP_GITEA_NODE_01 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "gitea-data-01:/var/lib/gitea" ]
-    cap_add: [ NET_ADMIN, NET_RAW ]
 
   gitea-node-02:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
@@ -38,7 +35,6 @@ services:
     networks:
       lab-internal-net: { ipv4_address: $IP_GITEA_NODE_02 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "gitea-data-02:/var/lib/gitea" ]
-    cap_add: [ NET_ADMIN, NET_RAW ]
 
   storage-01:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
@@ -48,7 +44,6 @@ services:
     networks:
       lab-internal-net: { ipv4_address: $IP_STORAGE_NODE_01 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "nfs-data-01:/data/brick1" ]
-    cap_add: [ NET_ADMIN, NET_RAW, SYS_ADMIN ]
 
   storage-02:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
@@ -58,38 +53,26 @@ services:
     networks:
       lab-internal-net: { ipv4_address: $IP_STORAGE_NODE_02 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw", "nfs-data-02:/data/brick1" ]
-    cap_add: [ NET_ADMIN, NET_RAW, SYS_ADMIN ]
 
-  db-proxy:
+  gitea-proxy-01:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
-    container_name: db-proxy
-    hostname: db-proxy
+    container_name: gitea-proxy-01
     privileged: true
-    networks:
-      lab-internal-net: { ipv4_address: $IP_DB_VIP }
-    volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw" ]
-    cap_add: [ NET_ADMIN, NET_RAW ]
-
-  gitea-proxy:
-    build: { context: ., dockerfile: node-ubuntu.Dockerfile }
-    container_name: gitea-proxy
-    privileged: true
-    hostname: gitea-proxy
+    hostname: gitea-proxy-01
     ports: [ "3000:3000", "2222:2222" ]
     networks:
-      lab-internal-net: { ipv4_address: $IP_GITEA_VIP }
+      lab-internal-net: { ipv4_address: $IP_GITEA_PROXY_01 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw" ]
-    cap_add: [ NET_ADMIN, NET_RAW ]
 
-  nfs-proxy:
+  gitea-proxy-02:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
-    container_name: nfs-proxy
+    container_name: gitea-proxy-02
     privileged: true
-    hostname: nfs-proxy
+    hostname: gitea-proxy-02
+    ports: [ "3002:3000", "2223:2222" ]
     networks:
-      lab-internal-net: { ipv4_address: $IP_STORAGE_VIP }
+      lab-internal-net: { ipv4_address: $IP_GITEA_PROXY_02 }
     volumes: [ "/sys/fs/cgroup:/sys/fs/cgroup:rw" ]
-    cap_add: [ NET_ADMIN, NET_RAW ]
 
   monitor-node-01:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
@@ -107,40 +90,19 @@ services:
       - "loki-data:/var/lib/loki"
       - "alertmanager-data:/var/lib/alertmanager"
       - "grafana-data:/var/lib/grafana"
-    cap_add: [ NET_ADMIN, NET_RAW ]
 
   backup-srv:
     build: { context: ., dockerfile: node-ubuntu.Dockerfile }
     container_name: backup-srv
     hostname: backup-srv
-
     privileged: true
-
     restart: unless-stopped
-
     networks:
       lab-internal-net:
         ipv4_address: $IP_BACKUP_NODE
-
     volumes:
       - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
-
       - "backup-data:/backup"
-
-      - "db-data-01:/source/db-node-01:ro"
-      - "db-data-02:/source/db-node-02:ro"
-      - "gitea-data-01:/source/gitea-node-01:ro"
-      - "gitea-data-02:/source/gitea-node-02:ro"
-      - "nfs-data-01:/source/storage-01:ro"
-      - "nfs-data-02:/source/storage-02:ro"
-
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-      - SYS_ADMIN
-
-    environment:
-      TZ: UTC
 
 networks:
   lab-internal-net:

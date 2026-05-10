@@ -18,11 +18,21 @@
     state: started
     enabled: yes
 
-- name: Set timezone
-  ansible.builtin.command:
-    cmd: timedatectl set-timezone Europe/Moscow
-  changed_when: false
-  
+- name: Set timezone to Europe/Moscow
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Europe/Moscow
+    dest: /etc/localtime
+    state: link
+    force: yes
+
+- name: Update /etc/timezone file
+  ansible.builtin.copy:
+    content: "Europe/Moscow\n"
+    dest: /etc/timezone
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Create gitea system group
   ansible.builtin.group:
     name: "{{ gitea_group }}"
@@ -84,12 +94,15 @@
 - name: Download Gitea binary
   ansible.builtin.get_url:
     url: "https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{ gitea_version
-      }}-linux-amd64"
+      }}-linux-{{ target_arch }}"
     dest: /usr/local/bin/gitea
     mode: "0755"
     owner: root
     group: root
     timeout: 120
+    checksum: "sha256:https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{
+      gitea_version }}-linux-{{ target_arch }}.sha256"
+  notify: restart gitea
 
 - name: Deploy app.ini configuration
   ansible.builtin.template:

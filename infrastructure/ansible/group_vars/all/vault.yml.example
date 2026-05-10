@@ -1,0 +1,27 @@
+vault_pg_admin_password: "YOUR_PG_ADMIN"
+vault_pg_repl_password: "YOUR_PG_REPL_PASSWORD"
+vault_keepalived_auth_pass: "YOUR_KEEPALIVED_AUTH_PASS"
+
+vault_gitea_db_password: "YOUR_GITEA_DB_PASSWORD"
+
+# openssl
+vault_gitea_secret_key: "YOUR_GITEA_SECRET_KEY"
+vault_gitea_internal_token: "YOUR_GITEA_INTERNAL_TOKEN"
+vault_gitea_jwt_secret: "YOUR_GITEA_JWT_SECRET"
+
+vault_gitea_admin_username: "YOUR_GITEA_ADMIN_USERNAME"
+vault_gitea_admin_password: "YOUR_GITEA_ADMIN_PASSWORD"
+vault_gitea_admin_email: "YOUR_GITEA_ADMIN_EMAIL"
+
+vault_alertmanager_email_password: "YOUR_ALERTMANAGER_EMAIL_PASSWORD"
+
+pg_exporter_password: "YOUR_PG_EXPORTER_PASSWORD"
+
+vault_email_for_alerts: "YOUR_ALERTS_EMAIL"
+
+vault_restic_repo_password: "YOUR_RESTIC_REPO_PASSWORD"
+vault_restic_rest_user: "YOUR_RESTIC_REST_USER"
+vault_restic_rest_password: "YOUR_RESTIC_REST_PASSWORD"
+
+vault_grafana_admin_password: "YOUR_GRAFANA_ADMIN_PASSWORD"
+
