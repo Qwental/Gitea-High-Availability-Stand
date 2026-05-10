@@ -3,10 +3,14 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /tmp/positions.yaml
+  filename: /var/lib/promtail/positions.yaml # Исправлено: перенос из /tmp
 
 clients:
   - url: http://{{ hostvars['monitor-node-01']['ansible_host'] }}:3100/loki/api/v1/push
+    backoff_config:
+      max_retries: 500
+      min_period: 500ms
+      max_period: 5m
 
 scrape_configs:
 - job_name: system
@@ -22,7 +26,7 @@ scrape_configs:
   journal:
     json: false
     max_age: 12h
-    path: /var/log/journal
+    path: /run/log/journal 
     labels:
       job: systemd-journal
       host: {{ inventory_hostname }}

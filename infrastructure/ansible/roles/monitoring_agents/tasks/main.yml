@@ -11,10 +11,20 @@
   retries: 3
   delay: 5
 
-- name: Set timezone
-  ansible.builtin.command:
-    cmd: timedatectl set-timezone Europe/Moscow
-  changed_when: false
+- name: Set timezone to Europe/Moscow
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Europe/Moscow
+    dest: /etc/localtime
+    state: link
+    force: yes
+
+- name: Update /etc/timezone file
+  ansible.builtin.copy:
+    content: "Europe/Moscow\n"
+    dest: /etc/timezone
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Create monitoring system group
   ansible.builtin.group:
@@ -29,45 +39,27 @@
     create_home: no
     shell: /usr/sbin/nologin
 
-- name: Download and unpack Node Exporter
+- name: Download and install Node Exporter
   ansible.builtin.unarchive:
     src: "https://github.com/prometheus/node_exporter/releases/download/v{{
       node_exporter_version }}/node_exporter-{{ node_exporter_version
-      }}.linux-arm64.tar.gz"
-    dest: /tmp/
-    remote_src: yes
-  register: node_exporter_download
-  retries: 3
-  delay: 5
-  until: node_exporter_download is success
-
-- name: Move Node Exporter binary
-  ansible.builtin.copy:
-    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-arm64/node_exporter"
-    dest: /usr/local/bin/node_exporter
-    mode: "0755"
-    remote_src: yes
-  notify: restart node_exporter
-
-- name: Configure journald
-  ansible.builtin.import_tasks: journald.yml
-
-- name: Download Promtail
-  ansible.builtin.get_url:
-    url: "https://github.com/grafana/loki/releases/download/v{{ promtail_version
-      }}/promtail-linux-arm64.zip"
-    dest: /tmp/promtail-linux-arm64.zip
-  register: promtail_download
-  retries: 3
-  delay: 5
-  until: promtail_download is success
-
-- name: Unpack Promtail binary
-  ansible.builtin.unarchive:
-    src: /tmp/promtail-linux-arm64.zip
+      }}.linux-{{ target_arch }}.tar.gz"
     dest: /usr/local/bin/
     remote_src: yes
-    mode: "0755"
+    extra_opts:
+      - "--strip-components=1"
+      - "node_exporter-{{ node_exporter_version }}.linux-{{ target_arch
+        }}/node_exporter"
+    creates: /usr/local/bin/node_exporter
+  notify: restart node_exporter
+
+- name: Download and install Promtail (ZIP archive)
+  ansible.builtin.unarchive:
+    src: "https://github.com/grafana/loki/releases/download/v{{ promtail_version
+      }}/promtail-linux-{{ target_arch }}.zip"
+    dest: /usr/local/bin/
+    remote_src: yes
+    creates: /usr/local/bin/promtail-linux-{{ target_arch }}
   notify: restart promtail
 
 - name: Create Promtail config directory
@@ -76,6 +68,12 @@
     state: directory
     owner: monitoring
     group: monitoring
+
+- name: Ensure promtail data directory exists
+  ansible.builtin.file:
+    path: /var/lib/promtail
+    state: directory
+    mode: "0755"
 
 - name: Deploy Promtail config
   ansible.builtin.template:
@@ -99,6 +97,9 @@
     dest: /etc/systemd/system/promtail.service
     mode: "0644"
   notify: restart promtail
+
+- name: Configure journald
+  ansible.builtin.import_tasks: journald.yml
 
 - name: Reload systemd
   ansible.builtin.systemd:
