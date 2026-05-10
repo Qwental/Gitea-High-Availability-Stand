@@ -4,7 +4,7 @@ Wants=network-online.target
 After=network-online.target
 [Service]
 User=monitoring
-ExecStart=/usr/local/bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/var/lib/alertmanager/
+ExecStart=/usr/local/bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/var/lib/alertmanager/ --log.level=debug
 Restart=always
 [Install]
 WantedBy=multi-user.target

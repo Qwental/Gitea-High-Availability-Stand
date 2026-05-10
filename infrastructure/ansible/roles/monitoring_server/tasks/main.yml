@@ -7,16 +7,27 @@
       - curl
     state: present
     update_cache: yes
+    cache_valid_time: 3600
   register: apt_res
   until: apt_res is success
   retries: 3
   delay: 5
 
-- name: Set timezone
-  ansible.builtin.command:
-    cmd: timedatectl set-timezone Europe/Moscow
-  changed_when: false
-  
+- name: Set timezone to Europe/Moscow
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Europe/Moscow
+    dest: /etc/localtime
+    state: link
+    force: yes
+
+- name: Update /etc/timezone file
+  ansible.builtin.copy:
+    content: "Europe/Moscow\n"
+    dest: /etc/timezone
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Ensure /etc/apt/keyrings directory exists
   ansible.builtin.file:
     path: /etc/apt/keyrings
@@ -38,49 +49,51 @@
     - /etc/alertmanager
     - /var/lib/alertmanager
 
-- name: Download Prometheus, Loki, Alertmanager
+- name: Download and install Prometheus
   ansible.builtin.unarchive:
-    src: "{{ item.url }}"
-    dest: /tmp/
+    src: "https://github.com/prometheus/prometheus/releases/download/v{{
+      prometheus_version }}/prometheus-{{ prometheus_version }}.linux-{{
+      target_arch }}.tar.gz"
+    dest: /usr/local/bin/
     remote_src: yes
-  loop:
-    - {
-        url: "https://github.com/prometheus/prometheus/releases/download/v{{
-          prometheus_version }}/prometheus-{{ prometheus_version
-          }}.linux-arm64.tar.gz",
-      }
-    - {
-        url: "https://github.com/grafana/loki/releases/download/v{{ loki_version
-          }}/loki-linux-arm64.zip",
-      }
-    - {
-        url: "https://github.com/prometheus/alertmanager/releases/download/v{{
-          alertmanager_version }}/alertmanager-{{ alertmanager_version
-          }}.linux-arm64.tar.gz",
-      }
+    extra_opts:
+      - "--strip-components=1"
+      - "prometheus-{{ prometheus_version }}.linux-{{ target_arch }}/prometheus"
+      - "prometheus-{{ prometheus_version }}.linux-{{ target_arch }}/promtool"
+    creates: /usr/local/bin/prometheus
+  notify: restart monitoring services
 
-- name: Install Binaries
-  ansible.builtin.copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    mode: "0755"
+- name: Download and install Alertmanager
+  ansible.builtin.unarchive:
+    src: "https://github.com/prometheus/alertmanager/releases/download/v{{
+      alertmanager_version }}/alertmanager-{{ alertmanager_version }}.linux-{{
+      target_arch }}.tar.gz"
+    dest: /usr/local/bin/
     remote_src: yes
-  loop:
-    - {
-        src: "/tmp/prometheus-{{ prometheus_version }}.linux-arm64/prometheus",
-        dest: "/usr/local/bin/prometheus",
-      }
-    - {
-        src: "/tmp/prometheus-{{ prometheus_version }}.linux-arm64/promtool",
-        dest: "/usr/local/bin/promtool",
-      }
-    - { src: "/tmp/loki-linux-arm64", dest: "/usr/local/bin/loki" }
-    - {
-        src: "/tmp/alertmanager-{{ alertmanager_version }}.linux-arm64/alertmanager",
-        dest: "/usr/local/bin/alertmanager",
-      }
-  retries: 3
-  delay: 5
+    extra_opts:
+      - "--strip-components=1"
+      - "alertmanager-{{ alertmanager_version }}.linux-{{ target_arch
+        }}/alertmanager"
+      - "alertmanager-{{ alertmanager_version }}.linux-{{ target_arch }}/amtool"
+    creates: /usr/local/bin/alertmanager
+  notify: restart monitoring services
+
+- name: Download and install Loki (ZIP archive)
+  ansible.builtin.unarchive:
+    src: "https://github.com/grafana/loki/releases/download/v{{ loki_version
+      }}/loki-linux-{{ target_arch }}.zip"
+    dest: /usr/local/bin/
+    remote_src: yes
+    creates: /usr/local/bin/loki-linux-{{ target_arch }}
+
+- name: Rename Loki binary and set permissions
+  ansible.builtin.copy:
+    src: "/usr/local/bin/loki-linux-{{ target_arch }}"
+    dest: /usr/local/bin/loki
+    remote_src: yes
+    mode: "0755"
+    owner: root
+  notify: restart monitoring services
 
 - name: Deploy Configurations
   ansible.builtin.template:
@@ -129,6 +142,7 @@
     name: grafana
     state: present
     update_cache: yes
+    cache_valid_time: 3600
 
 - name: Provision Grafana Datasources
   ansible.builtin.template:
@@ -136,10 +150,87 @@
     dest: /etc/grafana/provisioning/datasources/prometheus-loki.yml
   notify: restart grafana
 
-- name: Flush handlers to start services
+- name: Set Grafana admin credentials
+  ansible.builtin.ini_file:
+    path: /etc/grafana/grafana.ini
+    section: security
+    option: "{{ item.key }}"
+    value: "{{ item.value }}"
+    owner: root
+    group: grafana
+    mode: "0640"
+  loop:
+    - { key: "admin_user", value: "admin" }
+    - {
+        key: "admin_password",
+        value: "{{ vault_grafana_admin_password | default('admin') }}",
+      }
+  notify: restart grafana
+
+- name: Create Grafana dashboards storage directory
+  ansible.builtin.file:
+    path: /var/lib/grafana/dashboards
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0755"
+
+- name: Copy Grafana dashboards from local files
+  ansible.builtin.copy:
+    src: "dashboards/{{ item }}"
+    dest: "/var/lib/grafana/dashboards/{{ item }}"
+    owner: grafana
+    group: grafana
+    mode: "0640"
+  loop:
+    - gitea_13192.json
+    - Node_Exporter_Full_1860.json
+    - PostgreSQL_9628.json
+  notify: restart grafana
+
+- name: Replace Prometheus UID variable in dashboards (Case-insensitive)
+  ansible.builtin.replace:
+    path: "/var/lib/grafana/dashboards/{{ item }}"
+    regexp: "(?i)\\$\\{DS_PROMETHEUS\\}"
+    replace: "{{ grafana_prometheus_uid | default('prometheus-internal') }}"
+  loop:
+    - gitea_13192.json
+    - Node_Exporter_Full_1860.json
+    - PostgreSQL_9628.json
+
+- name: Replace Loki UID variable in dashboards (Case-insensitive)
+  ansible.builtin.replace:
+    path: "/var/lib/grafana/dashboards/{{ item }}"
+    regexp: "(?i)\\$\\{DS_LOKI\\}"
+    replace: "{{ grafana_loki_uid | default('loki-internal') }}"
+  loop:
+    - gitea_13192.json
+    - Node_Exporter_Full_1860.json
+    - PostgreSQL_9628.json
+
+- name: Configure Grafana dashboard provisioning
+  ansible.builtin.copy:
+    dest: /etc/grafana/provisioning/dashboards/default.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+    content: |
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: 'Gitea Platform'
+          type: file
+          disableDeletion: false
+          updateIntervalSeconds: 10
+          options:
+            path: /var/lib/grafana/dashboards
+  notify: restart grafana
+
+- name: Flush handlers to apply configurations and start services
   ansible.builtin.meta: flush_handlers
 
-- name: Ensure all services are running
+- name: Ensure all services are running and enabled on boot
   ansible.builtin.service:
     name: "{{ item }}"
     state: started
@@ -149,3 +240,18 @@
     - loki
     - alertmanager
     - grafana-server
+
+- name: Verify monitoring services health (Readiness probes)
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: GET
+    status_code: 200
+  register: _health_check
+  until: _health_check.status == 200
+  retries: 6
+  delay: 10
+  loop:
+    - "http://localhost:9090/-/healthy" # Prometheus
+    - "http://localhost:3100/ready" # Loki
+    - "http://localhost:9093/-/healthy" # Alertmanager
+    - "http://localhost:3000/api/health" # Grafana

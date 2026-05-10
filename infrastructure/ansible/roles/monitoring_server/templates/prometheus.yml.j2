@@ -5,7 +5,7 @@ alerting:
   alertmanagers:
     - static_configs:
         - targets:
-            - localhost:9093
+            - 127.0.0.1:9093
 
 rule_files:
   - /etc/prometheus/alerts.yml
@@ -15,34 +15,42 @@ scrape_configs:
     static_configs:
       - targets:
 {% for host in groups['all'] %}
-          - {{ hostvars[host].ansible_host | default(host) }}:9100
+          - '{{ hostvars[host].ansible_host | default(host) }}:9100'
 {% endfor %}
 
   - job_name: prometheus
     static_configs:
       - targets:
-          - localhost:9090
+          - 127.0.0.1:9090
 
   - job_name: promtail
     static_configs:
       - targets:
 {% for host in groups['all'] %}
-          - {{ hostvars[host].ansible_host | default(host) }}:9080
+          - '{{ hostvars[host].ansible_host | default(host) }}:9080'
 {% endfor %}
 
   - job_name: loki
     static_configs:
       - targets:
-          - localhost:3100
+          - 127.0.0.1:3100
 
   - job_name: alertmanager
     static_configs:
       - targets:
-          - localhost:9093
+          - 127.0.0.1:9093
+
   - job_name: postgres
     static_configs:
       - targets:
 {% for host in groups['db_cluster'] %}
-          - {{ hostvars[host].ansible_host | default(host) }}:9187
+          - '{{ hostvars[host].ansible_host | default(host) }}:9187'
 {% endfor %}
 
+  - job_name: gitea
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+{% for host in groups['gitea_servers'] %}
+          - '{{ hostvars[host].ansible_host | default(host) }}:3000'
+{% endfor %}

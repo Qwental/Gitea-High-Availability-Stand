@@ -4,7 +4,7 @@ global:
   smtp_from: 'szopinskiflight@gmail.com'
   smtp_auth_username: 'szopinskiflight@gmail.com'
   smtp_auth_password: '{{ vault_alertmanager_email_password }}'
-  smtp_require_tls: tru
+  smtp_require_tls: true
 
 route:
   group_by: ['alertname']
