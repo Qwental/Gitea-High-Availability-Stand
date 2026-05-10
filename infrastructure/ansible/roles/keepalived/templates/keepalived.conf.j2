@@ -1,0 +1,58 @@
+global_defs {
+    router_id {{ inventory_hostname }}
+    enable_script_security
+    script_user root
+}
+
+{% if 'db_cluster' in group_names %}
+vrrp_script check_service {
+    script "/usr/bin/pg_isready -h 127.0.0.1 -p 5432 -U postgres"
+    interval 2
+    weight -20
+    fall 2
+    rise 2
+    user postgres
+}
+{% elif 'storage_cluster' in group_names %}
+vrrp_script check_service {
+    script "/usr/bin/killall -0 ganesha.nfsd"
+    interval 2
+    weight -20
+    fall 2
+    rise 2
+}
+{% elif 'gitea_proxies' in group_names %}
+vrrp_script check_service {
+    script "/usr/bin/killall -0 haproxy"
+    interval 2
+    weight -20
+    fall 2
+    rise 2
+}
+{% endif %}
+
+vrrp_instance VI_{{ vrrp_router_id }} {
+    state {{ keepalived_role }}
+    interface eth0
+    virtual_router_id {{ vrrp_router_id }}
+    priority {{ keepalived_priority }}
+    advert_int 1
+
+    unicast_src_ip {{ ip_addr }}
+    unicast_peer {
+        {{ peer_ip }}
+    }
+
+    authentication {
+        auth_type PASS
+        auth_pass vrrp_{{ vrrp_router_id }}
+    }
+
+    virtual_ipaddress {
+        {{ vip_address }}/24 dev eth0
+    }
+
+    track_script {
+        check_service
+    }
+}

@@ -1,0 +1,53 @@
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+  check_mode: no
+  register: apt_update_status
+  until: apt_update_status is success
+  retries: 3
+  delay: 5
+
+- name: Set timezone to Europe/Moscow
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Europe/Moscow
+    dest: /etc/localtime
+    state: link
+    force: yes
+
+- name: Update /etc/timezone file
+  ansible.builtin.copy:
+    content: "Europe/Moscow\n"
+    dest: /etc/timezone
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install Keepalived and dependencies
+  ansible.builtin.apt:
+    name:
+      - keepalived
+      - psmisc
+    state: present
+  register: apt_install_status
+  until: apt_install_status is success
+  retries: 3
+  delay: 5
+
+- name: Deploy Keepalived configuration
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart keepalived
+
+- name: Flush handlers to apply config
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure Keepalived is started and enabled
+  ansible.builtin.service:
+    name: keepalived
+    state: started
+    enabled: yes
