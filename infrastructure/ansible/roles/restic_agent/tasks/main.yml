@@ -1,0 +1,93 @@
+---
+- name: Set timezone to Europe/Moscow
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Europe/Moscow
+    dest: /etc/localtime
+    state: link
+    force: yes
+
+- name: Update /etc/timezone file
+  ansible.builtin.copy:
+    content: "Europe/Moscow\n"
+    dest: /etc/timezone
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install restic
+  ansible.builtin.apt:
+    name: restic
+    state: present
+    update_cache: yes
+
+- name: Create restic configuration directory
+  ansible.builtin.file:
+    path: /etc/restic
+    state: directory
+    mode: "0700"
+
+- name: Deploy restic env file
+  ansible.builtin.template:
+    src: restic.env.j2
+    dest: /etc/restic/restic.env
+    mode: "0600"
+
+- name: Initialize Restic Repository
+  ansible.builtin.command: restic init
+  environment:
+    RESTIC_PASSWORD: "{{ restic_repo_password }}"
+    RESTIC_REPOSITORY: "rest:http://{{ restic_rest_user }}:{{ restic_rest_password
+      }}@backup-srv:8000/"
+  register: restic_init
+  changed_when: "'created restic repository' in restic_init.stdout"
+  failed_when:
+    - restic_init.rc != 0
+    - "'already initialized' not in restic_init.stderr"
+    - "'config file already exists' not in restic_init.stderr"
+  run_once: true
+
+- name: Deploy PostgreSQL backup scripts and units
+  block:
+    - name: Deploy PG backup wrapper
+      ansible.builtin.template:
+        src: backup-pg.sh.j2
+        dest: /usr/local/bin/backup-pg.sh
+        mode: "0700"
+    - name: Deploy PG systemd service and timer
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+      loop:
+        - restic-pg.service
+        - restic-pg.timer
+      notify: reload systemd
+    - name: Enable PG timer
+      ansible.builtin.systemd:
+        name: restic-pg.timer
+        state: started
+        enabled: yes
+        daemon_reload: yes
+  when: "'db_cluster' in group_names"
+
+- name: Deploy Storage backup scripts and units
+  block:
+    - name: Deploy FS backup wrapper
+      ansible.builtin.template:
+        src: backup-fs.sh.j2
+        dest: /usr/local/bin/backup-fs.sh
+        mode: "0700"
+    - name: Deploy FS systemd service and timer
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+      loop:
+        - restic-fs.service
+        - restic-fs.timer
+      notify: reload systemd
+    - name: Enable FS timer
+      ansible.builtin.systemd:
+        name: restic-fs.timer
+        state: started
+        enabled: yes
+        daemon_reload: yes
+  when: "'storage_cluster' in group_names"

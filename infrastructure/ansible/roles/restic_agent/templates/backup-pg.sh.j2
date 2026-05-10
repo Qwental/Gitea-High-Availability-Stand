@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+source /etc/restic/restic.env
+
+if ! ip a | grep -q "{{ db_vip }}"; then
+  echo "Node is not DB Master (VIP not found). Skipping backup."
+  exit 0
+fi
+
+su - postgres -c "pg_dumpall" | restic backup --stdin --stdin-filename dumpall.sql --host pg-cluster

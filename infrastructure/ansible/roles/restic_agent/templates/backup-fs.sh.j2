@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+source /etc/restic/restic.env
+
+# проверка VIP Storage
+if ! ip a | grep -q "{{ storage_vip }}"; then
+  echo "Node is not Storage Master. Skipping backup."
+  exit 0
+fi
+
+restic backup /data/brick1/gv0 --host storage-cluster

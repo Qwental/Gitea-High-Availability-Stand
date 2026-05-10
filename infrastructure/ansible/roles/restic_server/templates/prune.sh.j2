@@ -1,0 +1,4 @@
+#!/bin/bash
+export RESTIC_PASSWORD="{{ restic_repo_password }}"
+export RESTIC_REPOSITORY="/backup/restic"
+restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune

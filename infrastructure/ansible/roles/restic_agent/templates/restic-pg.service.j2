@@ -1,0 +1,6 @@
+[Unit]
+Description=Restic PostgreSQL Logical Backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/backup-pg.sh
