@@ -1,3 +1,5 @@
 .env
 vault.yml
 *.txt
+
+.DS_STORE
