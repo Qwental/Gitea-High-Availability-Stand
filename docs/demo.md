@@ -423,24 +423,6 @@ docker exec gitea-node-02 systemctl start gitea
 
 проверка, все восстановилось. все файлы и метаданные восстановлены из снапшота.
 ```
-OTICE: you can now start your PostgreSQL server
-HINT: for example: pg_ctl -D /var/lib/postgresql/14/main start
-HINT: after starting the server, you need to re-register this standby with "repmgr standby register --force" to update the existing node record
-INFO: connecting to local node "db-node-02" (ID: 2)
-ERROR: unable to connect to local node "db-node-02" (ID: 2)
-HINT: to register a standby which is not running, additionally provide the primary connection parameters
-
-~/gitops-c-stand main !3 ?2 > docker exec db-node-01 systemctl restart repmgrd                11s
-docker exec db-node-02 systemctl restart repmgrd
-
-~/gitops-c-stand main !3 ?2 > docker exec -it -u postgres db-node-01 repmgr -f /etc/repmgr.conf cluster show
- ID | Name       | Role    | Status    | Upstream   | Location | Priority | Timeline | Connection string                                          
-----+------------+---------+-----------+------------+----------+----------+----------+-------------------------------------------------------------
- 1  | db-node-01 | primary | * running |            | default  | 100      | 1        | host=db-node-01 user=repmgr dbname=repmgr connect_timeout=2
- 2  | db-node-02 | standby |   running | db-node-01 | default  | 100      | 1        | host=db-node-02 user=repmgr dbname=repmgr connect_timeout=2
-
-~/gitops-c-stand main !3 ?2 > docker exec gitea-node-01 systemctl start gitea
-
 ~/gitops-c-stand main !3 ?2 > curl -I http://localhost:3000/Qwental2/rep3/src/branch/main/README.md
 HTTP/1.1 200 OK
 cache-control: max-age=0, private, must-revalidate, no-transform
