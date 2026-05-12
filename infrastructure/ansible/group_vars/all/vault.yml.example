@@ -1,27 +1,36 @@
-vault_pg_admin_password: "YOUR_PG_ADMIN"
-vault_pg_repl_password: "YOUR_PG_REPL_PASSWORD"
-vault_keepalived_auth_pass: "YOUR_KEEPALIVED_AUTH_PASS"
+# PostgreSQL
+vault_pg_admin_password: "password"              # Пароль суперпользователя Postgres
+vault_pg_repl_password: "replication_token_123"  # Пароль для репликации Postgres
 
-vault_gitea_db_password: "YOUR_GITEA_DB_PASSWORD"
+# Keepalived (HA, VIP)
+vault_keepalived_auth_pass: "short8ch"           # AuthPass для Keepalived (минимум 8 символов)
 
-# openssl
-vault_gitea_secret_key: "YOUR_GITEA_SECRET_KEY"
-vault_gitea_internal_token: "YOUR_GITEA_INTERNAL_TOKEN"
-vault_gitea_jwt_secret: "YOUR_GITEA_JWT_SECRET"
+# Gitea Database
+vault_gitea_db_password: "gitea_secure_password" # Пароль пользователя БД Gitea
 
-vault_gitea_admin_username: "YOUR_GITEA_ADMIN_USERNAME"
-vault_gitea_admin_password: "YOUR_GITEA_ADMIN_PASSWORD"
-vault_gitea_admin_email: "YOUR_GITEA_ADMIN_EMAIL"
+# Gitea Secrets
+vault_gitea_secret_key: "aIK2EjsRcx2vGCeppwxd2BGmWLvZQ4IYYwS4HnlAtZU="       # SECRET_KEY для шифрования сессий
+vault_gitea_internal_token: "ta62gXPNXEowxAXwwQYES4fDIu0N40Uk/+QiXukthbI="  # Internal token для межнодового API
+vault_gitea_jwt_secret: "SDykOeiXM3Gl4cXXvf4O1OZpq//5Bj/reapYttS4pMw="       # JWT secret для Gitea
 
-vault_alertmanager_email_password: "YOUR_ALERTMANAGER_EMAIL_PASSWORD"
+# Gitea Admin User
+vault_gitea_admin_username: "admin"                       # Логин администратора
+vault_gitea_admin_password: "pofkgsdafkjhpodsfgsdjn3ODKFJH"  # Пароль администратора
+vault_gitea_admin_email: "admin@gmail.com"                # Email администратора
 
-pg_exporter_password: "YOUR_PG_EXPORTER_PASSWORD"
+# Alertmanager
+vault_alertmanager_email_password: "gggggggggggggggg"  # Пароль для SMTP (Alertmanager) ЕГО ПОЛУЧИТЬ ИЗ ГУГЛ АККАУНТА
 
-vault_email_for_alerts: "YOUR_ALERTS_EMAIL"
+# PostgreSQL Exporter
+pg_exporter_password: "strong_password_here"              # Пароль для Prometheus exporter
 
-vault_restic_repo_password: "YOUR_RESTIC_REPO_PASSWORD"
-vault_restic_rest_user: "YOUR_RESTIC_REST_USER"
-vault_restic_rest_password: "YOUR_RESTIC_REST_PASSWORD"
+# Email для уведомлений (Alertmanager)
+vault_email_for_alerts: "your_email@sdfsdfs.sdf"
 
-vault_grafana_admin_password: "YOUR_GRAFANA_ADMIN_PASSWORD"
+# Restic (Backup)
+vault_restic_repo_password: "SuperSecretRepoPassword"    # Пароль репозитория Restic
+vault_restic_rest_user: "backup"                         # Пользователь REST-сервера Restic
+vault_restic_rest_password: "SuperSecretRestPassword"    # Пароль REST-сервера Restic
 
+# Grafana
+vault_grafana_admin_password: "pofkgsdafkjhpodsfgsdjn3ODKFJH" # Пароль администратора Grafana
