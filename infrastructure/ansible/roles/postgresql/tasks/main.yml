@@ -23,6 +23,81 @@
   retries: 5
   delay: 15
 
+- name: Stop and disable legacy template service
+  ansible.builtin.systemd:
+    name: "postgresql@{{ pg_version }}-main"
+    state: stopped
+    enabled: no
+  ignore_errors: yes
+
+- name: Stop umbrella postgresql service if active
+  ansible.builtin.systemd:
+    name: postgresql
+    state: stopped
+  ignore_errors: yes
+
+- name: Mask template service to prevent auto-start
+  ansible.builtin.systemd:
+    name: "postgresql@.service"
+    masked: yes
+  ignore_errors: true
+
+- name: Mask umbrella service (will be replaced)
+  ansible.builtin.systemd:
+    name: postgresql.service
+    masked: yes
+  ignore_errors: true
+
+- name: Remove systemd override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/postgresql@.service.d
+    state: absent
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Wait until port 5432 is free
+  ansible.builtin.wait_for:
+    port: 5432
+    state: absent
+    timeout: 30
+  ignore_errors: true
+
+- name: Unmask postgresql.service before writing custom unit
+  ansible.builtin.systemd:
+    name: postgresql.service
+    masked: no
+  ignore_errors: true
+
+- name: Create custom PostgreSQL systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/postgresql.service
+    content: |
+      [Unit]
+      Description=PostgreSQL Database Server
+      After=network.target syslog.target
+
+      [Service]
+      Type=simple
+      User=postgres
+      Group=postgres
+      ExecStart=/usr/lib/postgresql/{{ pg_version }}/bin/postgres \
+        -D {{ pg_data_dir }} \
+        -c config_file={{ pg_conf_dir }}/postgresql.conf
+      Restart=on-failure
+      RestartSec=5
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: "0644"
+
+- name: Reload systemd after creating custom service
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
 - name: Ensure PostgreSQL socket directory exists
   ansible.builtin.file:
     path: /var/run/postgresql
@@ -34,29 +109,6 @@
 - name: Set timezone to Europe/Moscow
   community.general.timezone:
     name: Europe/Moscow
-
-- name: Create systemd override directory for PostgreSQL
-  ansible.builtin.file:
-    path: /etc/systemd/system/postgresql@.service.d
-    state: directory
-    mode: "0755"
-
-- name: Override PostgreSQL systemd unit for Docker compatibility
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/postgresql@.service.d/override.conf
-    content: |
-      [Service]
-      Type=simple
-      User=postgres
-      Group=postgres
-      ExecStart=
-      ExecStart=/usr/lib/postgresql/{{ pg_version }}/bin/postgres -D {{ pg_data_dir }} -c config_file={{ pg_conf_dir }}/postgresql.conf
-      PIDFile=
-    mode: "0644"
-
-- name: Reload systemd daemon
-  ansible.builtin.systemd:
-    daemon_reload: yes
 
 - name: Ensure PostgreSQL configuration directory exists
   ansible.builtin.file:
@@ -73,7 +125,6 @@
     owner: postgres
     group: postgres
     mode: "0644"
-  notify: restart postgresql
 
 - name: Deploy pg_hba.conf
   ansible.builtin.template:
@@ -82,7 +133,14 @@
     owner: postgres
     group: postgres
     mode: "0640"
-  notify: restart postgresql
+
+- name: Deploy pg_ident.conf
+  ansible.builtin.copy:
+    content: "# PostgreSQL User Name Maps\n"
+    dest: "{{ pg_conf_dir }}/pg_ident.conf"
+    owner: postgres
+    group: postgres
+    mode: "0644"
 
 - name: Deploy repmgr.conf
   ansible.builtin.template:
@@ -100,7 +158,7 @@
     group: postgres
     mode: "0600"
 
-- name: Configure /etc/default/repmgrd for Ubuntu
+- name: Configure /etc/default/repmgrd
   ansible.builtin.copy:
     dest: /etc/default/repmgrd
     content: |
@@ -110,7 +168,7 @@
     group: root
     mode: "0644"
 
-- name: Ensure repmgr log file exists with correct permissions
+- name: Ensure repmgr log file exists
   ansible.builtin.file:
     path: /var/log/postgresql/repmgr.log
     state: touch
@@ -119,32 +177,38 @@
     mode: "0664"
   changed_when: false
 
-- name: Flush handlers
-  ansible.builtin.meta: flush_handlers
-
 - name: Check if PostgreSQL data directory is initialized
   ansible.builtin.find:
     paths: "{{ pg_data_dir }}"
   register: pg_data_check
 
 - name: Initialize PostgreSQL database cluster
-  ansible.builtin.command: /usr/lib/postgresql/{{ pg_version }}/bin/initdb -D {{ pg_data_dir }}
+  ansible.builtin.command: >
+    /usr/lib/postgresql/{{ pg_version }}/bin/initdb -D {{ pg_data_dir }}
   become_user: postgres
   when: pg_data_check.matched == 0
 
-- name: Ensure PostgreSQL is started (Master only for initial setup)
-  ansible.builtin.service:
+- name: Ensure PostgreSQL is started and enabled
+  ansible.builtin.systemd:
     name: postgresql
     state: started
     enabled: yes
-  when: is_master | bool
+  register: pg_start_result
+  failed_when: false
 
-- name: Wait for PostgreSQL to start accepting connections
+- name: Wait for PostgreSQL to accept connections (port check)
   ansible.builtin.wait_for:
-    path: "/var/run/postgresql/.s.PGSQL.5432"
+    host: 127.0.0.1
+    port: 5432
     state: started
-    timeout: 30
-  when: is_master | bool
+    timeout: 60
+    delay: 2
+
+- name: Check PostgreSQL service active status
+  ansible.builtin.systemd:
+    name: postgresql
+  register: pg_service_check
+  failed_when: pg_service_check.status.ActiveState != 'active'
 
 - name: Create repmgr user (Master)
   community.postgresql.postgresql_user:
@@ -176,12 +240,10 @@
   changed_when: "'registered as primary' in repmgr_primary.stdout"
   failed_when:
     - repmgr_primary.rc != 0
-    - "'already registered' not in repmgr_primary.stderr and 'already
-      registered' not in repmgr_primary.stdout"
+    - "'already registered' not in repmgr_primary.stderr and 'already registered' not in repmgr_primary.stdout"
   retries: 3
   delay: 5
-  until: repmgr_primary.rc == 0 or 'already registered' in repmgr_primary.stderr
-    or 'already registered' in repmgr_primary.stdout
+  until: repmgr_primary.rc == 0 or 'already registered' in repmgr_primary.stderr or 'already registered' in repmgr_primary.stdout
   when: is_master | bool
 
 - name: Check if replica is initialized (Slave)
@@ -226,20 +288,17 @@
       changed_when: "'registered as standby' in repmgr_standby.stdout"
       failed_when:
         - repmgr_standby.rc != 0
-        - "'already registered' not in repmgr_standby.stderr and 'already
-          registered' not in repmgr_standby.stdout"
+        - "'already registered' not in repmgr_standby.stderr and 'already registered' not in repmgr_standby.stdout"
       retries: 3
       delay: 5
-      until:
-        repmgr_standby.rc == 0 or 'already registered' in repmgr_standby.stderr
-        or 'already registered' in repmgr_standby.stdout
+      until: repmgr_standby.rc == 0 or 'already registered' in repmgr_standby.stderr or 'already registered' in repmgr_standby.stdout
   when: not is_master | bool and not standby_signal.stat.exists
 
 - name: Setup Gitea database
   ansible.builtin.include_tasks: gitea.yml
   when: is_master | bool
 
-- name: Ensure repmgrd (Auto-Failover Daemon) is started
+- name: Ensure repmgrd is started and enabled
   ansible.builtin.service:
     name: repmgrd
     state: started

@@ -51,6 +51,17 @@
 Желательно включить впнчик с иностранным сервером =)
 Запуск полной цепочки установки всех ролей: 
 
+можно без впна:
+```bash
+ansible-playbook -i inventory.ini deploy.yml --vault-password-file .vault_pass --skip-tags monitoring
+```
+
+Обязательно с впном(зеркала яндекса почему-то не работают, поэтому только так)
+```bash
+ansible-playbook -i inventory.ini deploy.yml --vault-password-file .vault_pass --tags monitoring
+```
+
+
 ```bash
 cd infrastructure/ansible
 ansible-playbook -i inventory.ini deploy.yml --vault-password-file .vault_pass
