@@ -19,13 +19,15 @@ vault_gitea_admin_password: "pofkgsdafkjhpodsfgsdjn3ODKFJH"  # Пароль ад
 vault_gitea_admin_email: "admin@gmail.com"                # Email администратора
 
 # Alertmanager
-vault_alertmanager_email_password: "gggggggggggggggg"  # Пароль для SMTP (Alertmanager) ЕГО ПОЛУЧИТЬ ИЗ ГУГЛ АККАУНТА
+vault_alertmanager_email: "YOUR_GOOGLE_EMAIL@gmail.com"
+vault_alertmanager_email_password: "gggggggggggggggg"  # это не пароль от почты, это пароль от приложения, ЕГО можно ПОЛУЧИТЬ ИЗ ГУГЛ АККАУНТА через "Applications" имеея при этом двух факторку
+# Email для уведомлений (Alertmanager)
+vault_email_for_alerts: "your_email@sdfsdfs.sdf"
 
 # PostgreSQL Exporter
 pg_exporter_password: "strong_password_here"              # Пароль для Prometheus exporter
 
-# Email для уведомлений (Alertmanager)
-vault_email_for_alerts: "your_email@sdfsdfs.sdf"
+
 
 # Restic (Backup)
 vault_restic_repo_password: "SuperSecretRepoPassword"    # Пароль репозитория Restic

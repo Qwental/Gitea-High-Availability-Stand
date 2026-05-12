@@ -1,8 +1,8 @@
 global:
   resolve_timeout: 5m
   smtp_smarthost: 'smtp.gmail.com:587'
-  smtp_from: 'szopinskiflight@gmail.com'
-  smtp_auth_username: 'szopinskiflight@gmail.com'
+  smtp_from: '{{ vault_alertmanager_email }}'
+  smtp_auth_username: '{{ vault_alertmanager_email }}'
   smtp_auth_password: '{{ vault_alertmanager_email_password }}'
   smtp_require_tls: true
 
