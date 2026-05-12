@@ -175,6 +175,7 @@
     - gitea_13192.json
     - Node_Exporter_Full_1860.json
     - PostgreSQL_9628.json
+    - Alertmanager.json
   notify: restart grafana
 
 - name: Replace Prometheus UID variable in dashboards (Case-insensitive)
@@ -186,6 +187,7 @@
     - gitea_13192.json
     - Node_Exporter_Full_1860.json
     - PostgreSQL_9628.json
+    - Alertmanager.json
 
 - name: Replace Loki UID variable in dashboards (Case-insensitive)
   ansible.builtin.replace:
@@ -196,6 +198,7 @@
     - gitea_13192.json
     - Node_Exporter_Full_1860.json
     - PostgreSQL_9628.json
+    - Alertmanager.json
 
 - name: Configure Grafana dashboard provisioning
   ansible.builtin.copy:
