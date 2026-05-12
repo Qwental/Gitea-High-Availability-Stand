@@ -1,4 +1,3 @@
----
 - name: Set timezone to Europe/Moscow
   community.general.timezone:
     name: Europe/Moscow
@@ -12,6 +11,11 @@
       - restic
     state: present
     update_cache: yes
+    cache_valid_time: 3600
+  register: apt_res
+  until: apt_res is success
+  retries: 3
+  delay: 5
 
 - name: Create backup group
   ansible.builtin.group:
@@ -33,29 +37,35 @@
     group: backup
     mode: "0700"
 
-- name: Download and install rest-server binary
+- name: Download rest-server archive
+  ansible.builtin.get_url:
+    url: "https://github.com/restic/rest-server/releases/download/v0.14.0/rest-server_0.14.0_linux_{{ target_arch }}.tar.gz"
+    dest: "/tmp/rest-server_0.14.0_linux_{{ target_arch }}.tar.gz"
+    timeout: 120
+    owner: root
+    group: root
+    mode: "0644"
+  register: rest_server_download
+  until: rest_server_download is succeeded
+  retries: 5
+  delay: 10
+
+- name: Extract rest-server binary
   ansible.builtin.unarchive:
-    src:
-      "https://github.com/restic/rest-server/releases/download/v0.14.0/rest-serv\
-      er_0.14.0_linux_{{target_arch}}.tar.gz"
+    src: "/tmp/rest-server_0.14.0_linux_{{ target_arch }}.tar.gz"
     dest: /usr/local/bin/
     remote_src: yes
     extra_opts:
       - "--strip-components=1"
-      - "rest-server_0.14.0_linux_{{target_arch}}/rest-server"
+      - "rest-server_0.14.0_linux_{{ target_arch }}/rest-server"
     creates: /usr/local/bin/rest-server
   notify: restart rest-server
 
-- name: Extract and install rest-server
-  ansible.builtin.unarchive:
-    src: "/tmp/rest-server.tar.gz"
-    dest: "/usr/local/bin/"
-    remote_src: yes
-    extra_opts:
-      - "--strip-components=1"
-      - "rest-server_0.14.0_linux_{{target_arch}}/rest-server"
-    creates: /usr/local/bin/rest-server
-  notify: restart rest-server
+- name: Remove temporary rest-server archive
+  ansible.builtin.file:
+    path: "/tmp/rest-server_0.14.0_linux_{{ target_arch }}.tar.gz"
+    state: absent
+  when: rest_server_download is changed
 
 - name: Set permissions for rest-server binary
   ansible.builtin.file:
@@ -69,10 +79,9 @@
     path: /backup/restic/.htpasswd
   register: htpasswd_file
 
-- name: Create .htpasswd file for REST API auth using native htpasswd
+- name: Create .htpasswd file for REST API auth
   ansible.builtin.command:
-    cmd: "htpasswd -B -b -c /backup/restic/.htpasswd {{ restic_rest_user }} {{
-      restic_rest_password }}"
+    cmd: "htpasswd -B -b -c /backup/restic/.htpasswd {{ restic_rest_user }} {{ restic_rest_password }}"
   when: not htpasswd_file.stat.exists
   notify: restart rest-server
 
@@ -95,6 +104,10 @@
     state: started
     enabled: yes
     daemon_reload: yes
+  register: rest_server_service
+  until: rest_server_service is success
+  retries: 5
+  delay: 10
 
 - name: Deploy prune cron job wrapper
   ansible.builtin.template:

@@ -28,27 +28,45 @@
     create_home: no
     shell: /usr/sbin/nologin
 
-- name: Download and install Node Exporter
+- name: Download Node Exporter archive
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ target_arch }}.tar.gz"
+    dest: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ target_arch }}.tar.gz"
+    timeout: 120
+    mode: "0644"
+  register: node_exporter_download
+  until: node_exporter_download is succeeded
+  retries: 5
+  delay: 10
+
+- name: Extract Node Exporter binary
   ansible.builtin.unarchive:
-    src: "https://github.com/prometheus/node_exporter/releases/download/v{{
-      node_exporter_version }}/node_exporter-{{ node_exporter_version
-      }}.linux-{{ target_arch }}.tar.gz"
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ target_arch }}.tar.gz"
     dest: /usr/local/bin/
     remote_src: yes
     extra_opts:
       - "--strip-components=1"
-      - "node_exporter-{{ node_exporter_version }}.linux-{{ target_arch
-        }}/node_exporter"
+      - "node_exporter-{{ node_exporter_version }}.linux-{{ target_arch }}/node_exporter"
     creates: /usr/local/bin/node_exporter
   notify: restart node_exporter
 
-- name: Download and install Promtail (ZIP archive)
+- name: Download Promtail archive
+  ansible.builtin.get_url:
+    url: "https://github.com/grafana/loki/releases/download/v{{ promtail_version }}/promtail-linux-{{ target_arch }}.zip"
+    dest: "/tmp/promtail-linux-{{ target_arch }}.zip"
+    timeout: 120
+    mode: "0644"
+  register: promtail_download
+  until: promtail_download is succeeded
+  retries: 5
+  delay: 10
+
+- name: Extract Promtail binary
   ansible.builtin.unarchive:
-    src: "https://github.com/grafana/loki/releases/download/v{{ promtail_version
-      }}/promtail-linux-{{ target_arch }}.zip"
+    src: "/tmp/promtail-linux-{{ target_arch }}.zip"
     dest: /usr/local/bin/
     remote_src: yes
-    creates: /usr/local/bin/promtail-linux-{{ target_arch }}
+    creates: "/usr/local/bin/promtail-linux-{{ target_arch }}"
   notify: restart promtail
 
 - name: Create Promtail config directory

@@ -83,15 +83,17 @@
 
 - name: Download Gitea binary
   ansible.builtin.get_url:
-    url: "https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{ gitea_version
-      }}-linux-{{ target_arch }}"
+    url: "https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{ gitea_version }}-linux-{{ target_arch }}"
     dest: /usr/local/bin/gitea
     mode: "0755"
     owner: root
     group: root
     timeout: 120
-    checksum: "sha256:https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{
-      gitea_version }}-linux-{{ target_arch }}.sha256"
+    checksum: "sha256:https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{ gitea_version }}-linux-{{ target_arch }}.sha256"
+  register: gitea_download
+  until: gitea_download is succeeded
+  retries: 5
+  delay: 10
   notify: restart gitea
 
 - name: Deploy app.ini configuration

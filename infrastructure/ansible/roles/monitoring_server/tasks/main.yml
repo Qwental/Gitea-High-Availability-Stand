@@ -1,4 +1,3 @@
----
 - name: Install dependencies for APT repositories
   ansible.builtin.apt:
     name:
@@ -23,6 +22,19 @@
     state: directory
     mode: "0755"
 
+- name: Create monitoring group
+  ansible.builtin.group:
+    name: monitoring
+    system: yes
+
+- name: Create monitoring user
+  ansible.builtin.user:
+    name: monitoring
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+    group: monitoring
+
 - name: Create monitoring directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -38,11 +50,23 @@
     - /etc/alertmanager
     - /var/lib/alertmanager
 
-- name: Download and install Prometheus
+- name: Download Prometheus archive
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-{{ target_arch }}.tar.gz"
+    dest: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ target_arch }}.tar.gz"
+    timeout: 120
+    owner: root
+    group: root
+    mode: "0644"
+    checksum: "sha256:https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/sha256sums.txt"
+  register: prometheus_download
+  until: prometheus_download is succeeded
+  retries: 5
+  delay: 10
+
+- name: Extract Prometheus binaries
   ansible.builtin.unarchive:
-    src: "https://github.com/prometheus/prometheus/releases/download/v{{
-      prometheus_version }}/prometheus-{{ prometheus_version }}.linux-{{
-      target_arch }}.tar.gz"
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ target_arch }}.tar.gz"
     dest: /usr/local/bin/
     remote_src: yes
     extra_opts:
@@ -52,28 +76,62 @@
     creates: /usr/local/bin/prometheus
   notify: restart monitoring services
 
-- name: Download and install Alertmanager
+- name: Remove temporary Prometheus archive
+  ansible.builtin.file:
+    path: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ target_arch }}.tar.gz"
+    state: absent
+  when: prometheus_download is changed
+
+- name: Download Alertmanager archive
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/alertmanager/releases/download/v{{ alertmanager_version }}/alertmanager-{{ alertmanager_version }}.linux-{{ target_arch }}.tar.gz"
+    dest: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ target_arch }}.tar.gz"
+    timeout: 120
+    owner: root
+    group: root
+    mode: "0644"
+  register: alertmanager_download
+  until: alertmanager_download is succeeded
+  retries: 5
+  delay: 10
+
+- name: Extract Alertmanager binaries
   ansible.builtin.unarchive:
-    src: "https://github.com/prometheus/alertmanager/releases/download/v{{
-      alertmanager_version }}/alertmanager-{{ alertmanager_version }}.linux-{{
-      target_arch }}.tar.gz"
+    src: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ target_arch }}.tar.gz"
     dest: /usr/local/bin/
     remote_src: yes
     extra_opts:
       - "--strip-components=1"
-      - "alertmanager-{{ alertmanager_version }}.linux-{{ target_arch
-        }}/alertmanager"
+      - "alertmanager-{{ alertmanager_version }}.linux-{{ target_arch }}/alertmanager"
       - "alertmanager-{{ alertmanager_version }}.linux-{{ target_arch }}/amtool"
     creates: /usr/local/bin/alertmanager
   notify: restart monitoring services
 
-- name: Download and install Loki (ZIP archive)
+- name: Remove temporary Alertmanager archive
+  ansible.builtin.file:
+    path: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ target_arch }}.tar.gz"
+    state: absent
+  when: alertmanager_download is changed
+
+- name: Download Loki archive
+  ansible.builtin.get_url:
+    url: "https://github.com/grafana/loki/releases/download/v{{ loki_version }}/loki-linux-{{ target_arch }}.zip"
+    dest: "/tmp/loki-linux-{{ target_arch }}.zip"
+    timeout: 120
+    owner: root
+    group: root
+    mode: "0644"
+  register: loki_download
+  until: loki_download is succeeded
+  retries: 5
+  delay: 10
+
+- name: Extract Loki binary
   ansible.builtin.unarchive:
-    src: "https://github.com/grafana/loki/releases/download/v{{ loki_version
-      }}/loki-linux-{{ target_arch }}.zip"
+    src: "/tmp/loki-linux-{{ target_arch }}.zip"
     dest: /usr/local/bin/
     remote_src: yes
-    creates: /usr/local/bin/loki-linux-{{ target_arch }}
+    creates: "/usr/local/bin/loki-linux-{{ target_arch }}"
 
 - name: Rename Loki binary and set permissions
   ansible.builtin.copy:
@@ -83,6 +141,12 @@
     mode: "0755"
     owner: root
   notify: restart monitoring services
+
+- name: Remove temporary Loki archive
+  ansible.builtin.file:
+    path: "/tmp/loki-linux-{{ target_arch }}.zip"
+    state: absent
+  when: loki_download is changed
 
 - name: Deploy Configurations
   ansible.builtin.template:
@@ -121,8 +185,7 @@
 
 - name: Add Grafana APT repository
   ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com
-      stable main"
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
     state: present
     filename: grafana
 
@@ -178,7 +241,7 @@
     - Alertmanager.json
   notify: restart grafana
 
-- name: Replace Prometheus UID variable in dashboards (Case-insensitive)
+- name: Replace Prometheus UID variable in dashboards
   ansible.builtin.replace:
     path: "/var/lib/grafana/dashboards/{{ item }}"
     regexp: "(?i)\\$\\{DS_PROMETHEUS\\}"
@@ -189,7 +252,7 @@
     - PostgreSQL_9628.json
     - Alertmanager.json
 
-- name: Replace Loki UID variable in dashboards (Case-insensitive)
+- name: Replace Loki UID variable in dashboards
   ansible.builtin.replace:
     path: "/var/lib/grafana/dashboards/{{ item }}"
     regexp: "(?i)\\$\\{DS_LOKI\\}"
@@ -233,17 +296,42 @@
     - alertmanager
     - grafana-server
 
-- name: Verify monitoring services health (Readiness probes)
+- name: Verify Prometheus is healthy
   ansible.builtin.uri:
-    url: "{{ item }}"
+    url: "http://localhost:9090/-/healthy"
     method: GET
     status_code: 200
-  register: _health_check
-  until: _health_check.status == 200
+  register: prometheus_health
+  until: prometheus_health.status == 200
   retries: 6
   delay: 10
-  loop:
-    - "http://localhost:9090/-/healthy" # Prometheus
-    - "http://localhost:3100/ready" # Loki
-    - "http://localhost:9093/-/healthy" # Alertmanager
-    - "http://localhost:3000/api/health" # Grafana
+
+- name: Verify Loki is ready
+  ansible.builtin.uri:
+    url: "http://localhost:3100/ready"
+    method: GET
+    status_code: 200
+  register: loki_health
+  until: loki_health.status == 200
+  retries: 6
+  delay: 10
+
+- name: Verify Alertmanager is healthy
+  ansible.builtin.uri:
+    url: "http://localhost:9093/-/healthy"
+    method: GET
+    status_code: 200
+  register: alertmanager_health
+  until: alertmanager_health.status == 200
+  retries: 6
+  delay: 10
+
+- name: Verify Grafana is healthy
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/health"
+    method: GET
+    status_code: 200
+  register: grafana_health
+  until: grafana_health.status == 200
+  retries: 6
+  delay: 10
