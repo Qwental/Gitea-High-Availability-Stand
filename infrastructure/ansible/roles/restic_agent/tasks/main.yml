@@ -1,18 +1,7 @@
 ---
 - name: Set timezone to Europe/Moscow
-  ansible.builtin.file:
-    src: /usr/share/zoneinfo/Europe/Moscow
-    dest: /etc/localtime
-    state: link
-    force: yes
-
-- name: Update /etc/timezone file
-  ansible.builtin.copy:
-    content: "Europe/Moscow\n"
-    dest: /etc/timezone
-    owner: root
-    group: root
-    mode: "0644"
+  community.general.timezone:
+    name: Europe/Moscow
 
 - name: Install restic
   ansible.builtin.apt:
@@ -36,7 +25,8 @@
   ansible.builtin.command: restic init
   environment:
     RESTIC_PASSWORD: "{{ restic_repo_password }}"
-    RESTIC_REPOSITORY: "rest:http://{{ restic_rest_user }}:{{ restic_rest_password
+    RESTIC_REPOSITORY:
+      "rest:http://{{ restic_rest_user }}:{{ restic_rest_password
       }}@backup-srv:8000/"
   register: restic_init
   changed_when: "'created restic repository' in restic_init.stdout"

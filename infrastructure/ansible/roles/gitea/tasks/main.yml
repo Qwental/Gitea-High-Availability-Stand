@@ -19,19 +19,8 @@
     enabled: yes
 
 - name: Set timezone to Europe/Moscow
-  ansible.builtin.file:
-    src: /usr/share/zoneinfo/Europe/Moscow
-    dest: /etc/localtime
-    state: link
-    force: yes
-
-- name: Update /etc/timezone file
-  ansible.builtin.copy:
-    content: "Europe/Moscow\n"
-    dest: /etc/timezone
-    owner: root
-    group: root
-    mode: "0644"
+  community.general.timezone:
+    name: Europe/Moscow
 
 - name: Create gitea system group
   ansible.builtin.group:
@@ -71,7 +60,8 @@
     src: "{{ storage_vip }}:/"
     path: /var/lib/gitea/data/gitea-repositories
     fstype: nfs
-    opts: "nfsvers=3,proto=tcp,mountproto=tcp,rw,soft,timeo=10,retrans=2,noatime,no\
+    opts:
+      "nfsvers=3,proto=tcp,mountproto=tcp,rw,soft,timeo=10,retrans=2,noatime,no\
       lock"
     state: mounted
 

@@ -32,19 +32,8 @@
     mode: "2775"
 
 - name: Set timezone to Europe/Moscow
-  ansible.builtin.file:
-    src: /usr/share/zoneinfo/Europe/Moscow
-    dest: /etc/localtime
-    state: link
-    force: yes
-
-- name: Update /etc/timezone file
-  ansible.builtin.copy:
-    content: "Europe/Moscow\n"
-    dest: /etc/timezone
-    owner: root
-    group: root
-    mode: "0644"
+  community.general.timezone:
+    name: Europe/Moscow
 
 - name: Create systemd override directory for PostgreSQL
   ansible.builtin.file:
@@ -241,7 +230,8 @@
           registered' not in repmgr_standby.stdout"
       retries: 3
       delay: 5
-      until: repmgr_standby.rc == 0 or 'already registered' in repmgr_standby.stderr
+      until:
+        repmgr_standby.rc == 0 or 'already registered' in repmgr_standby.stderr
         or 'already registered' in repmgr_standby.stdout
   when: not is_master | bool and not standby_signal.stat.exists
 

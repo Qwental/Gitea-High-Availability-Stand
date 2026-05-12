@@ -1,18 +1,7 @@
 ---
 - name: Set timezone to Europe/Moscow
-  ansible.builtin.file:
-    src: /usr/share/zoneinfo/Europe/Moscow
-    dest: /etc/localtime
-    state: link
-    force: yes
-
-- name: Update /etc/timezone file
-  ansible.builtin.copy:
-    content: "Europe/Moscow\n"
-    dest: /etc/timezone
-    owner: root
-    group: root
-    mode: "0644"
+  community.general.timezone:
+    name: Europe/Moscow
 
 - name: Install required packages
   ansible.builtin.apt:
@@ -46,7 +35,8 @@
 
 - name: Download and install rest-server binary
   ansible.builtin.unarchive:
-    src: "https://github.com/restic/rest-server/releases/download/v0.14.0/rest-serv\
+    src:
+      "https://github.com/restic/rest-server/releases/download/v0.14.0/rest-serv\
       er_0.14.0_linux_{{target_arch}}.tar.gz"
     dest: /usr/local/bin/
     remote_src: yes

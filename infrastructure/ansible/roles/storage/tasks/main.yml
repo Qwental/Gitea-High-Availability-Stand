@@ -1,25 +1,7 @@
 ---
-- name: Install tzdata
-  ansible.builtin.apt:
-    name: tzdata
-    state: present
-  retries: 3
-  delay: 10
-
 - name: Set timezone to Europe/Moscow
-  ansible.builtin.file:
-    src: /usr/share/zoneinfo/Europe/Moscow
-    dest: /etc/localtime
-    state: link
-    force: yes
-
-- name: Update /etc/timezone file
-  ansible.builtin.copy:
-    content: "Europe/Moscow\n"
-    dest: /etc/timezone
-    owner: root
-    group: root
-    mode: "0644"
+  community.general.timezone:
+    name: Europe/Moscow
 
 - name: Install dependencies
   ansible.builtin.apt:
@@ -43,7 +25,7 @@
     - glusterd
 
 - name: Probe GlusterFS peers
-  ansible.builtin.command: gluster peer probe 172.20.0.42
+  ansible.builtin.command: gluster peer probe {{storage_node_02}}
   when: inventory_hostname == 'storage-01'
   register: peer_probe
   changed_when: "'success' in peer_probe.stdout"
@@ -56,11 +38,12 @@
     owner: "1000"
     group: "1000"
     mode: "0755"
+  changed_when: false
 
 - name: Create GlusterFS volume
   ansible.builtin.command: >
-    gluster volume create gitea_vol replica 2 172.20.0.41:/data/brick1/gv0
-    172.20.0.42:/data/brick1/gv0 force
+    gluster volume create gitea_vol replica 2 {{storage_node_01}}:/data/brick1/gv0
+    {{storage_node_02}}:/data/brick1/gv0 force
   when: inventory_hostname == 'storage-01'
   register: gluster_create
   changed_when: "'success' in gluster_create.stdout"
@@ -73,29 +56,6 @@
   changed_when: "'success' in gluster_start.stdout"
   failed_when: "'already started' not in gluster_start.stderr and gluster_start.rc != 0"
   notify: Restart NFS-Ganesha
-
-# - name: Temporarily mount GlusterFS to set volume permissions
-#   ansible.posix.mount:
-#     src: localhost:/gitea_vol
-#     path: /mnt/tmp_gv0
-#     fstype: glusterfs
-#     state: mounted
-#   when: inventory_hostname == 'storage-01'
-
-# - name: Ensure correct ownership for Gitea volume root
-#   ansible.builtin.file:
-#     path: /mnt/tmp_gv0
-#     state: directory
-#     owner: "1000"
-#     group: "1000"
-#     mode: "0750"
-#   when: inventory_hostname == 'storage-01'
-
-# - name: Unmount temporary GlusterFS mount
-#   ansible.posix.mount:
-#     path: /mnt/tmp_gv0
-#     state: unmounted
-#   when: inventory_hostname == 'storage-01'
 
 - name: Create required Ganesha directories
   ansible.builtin.file:
