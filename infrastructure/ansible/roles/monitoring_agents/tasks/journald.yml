@@ -20,11 +20,8 @@
     owner: root
     group: systemd-journal
     mode: "2755"
+  notify: restart journald
 
-- name: Restart journald
-  ansible.builtin.systemd:
-    name: systemd-journald
-    state: restarted
 
 - name: Flush handlers
   ansible.builtin.meta: flush_handlers

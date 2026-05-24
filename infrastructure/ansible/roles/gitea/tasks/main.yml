@@ -49,20 +49,24 @@
     - "{{ gitea_work_dir }}/data"
     - "{{ gitea_work_dir }}/log"
 
+- name: Check current mount status
+  ansible.builtin.set_fact:
+    current_mount: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', '/var/lib/gitea/data/gitea-repositories') | first | default({}) }}"
+
 - name: Unmount repositories if stale (Cleanup)
   ansible.posix.mount:
     path: /var/lib/gitea/data/gitea-repositories
     state: unmounted
-  failed_when: false
+  when:
+    - current_mount.mount is defined
+    - current_mount.device != (storage_vip ~ ':/')
 
 - name: Mount HA NFS storage for Gitea
   ansible.posix.mount:
     src: "{{ storage_vip }}:/"
     path: /var/lib/gitea/data/gitea-repositories
     fstype: nfs
-    opts:
-      "nfsvers=3,proto=tcp,mountproto=tcp,rw,soft,timeo=10,retrans=2,noatime,no\
-      lock"
+    opts: "nfsvers=3,proto=tcp,mountproto=tcp,rw,soft,timeo=10,retrans=2,noatime,nolock"
     state: mounted
 
 - name: Set permissions on mounted NFS volume
@@ -72,6 +76,8 @@
     owner: "{{ gitea_user }}"
     group: "{{ gitea_group }}"
     mode: "0750"
+  run_once: true
+  changed_when: false
 
 - name: Create configuration directory
   ansible.builtin.file:
@@ -96,23 +102,22 @@
   delay: 10
   notify: restart gitea
 
-- name: Deploy app.ini configuration
+- name: Check if app.ini exists
+  ansible.builtin.stat:
+    path: "{{ gitea_conf_dir }}/app.ini"
+  register: gitea_config_stat
+
+- name: Initialize app.ini from template if missing
   ansible.builtin.template:
     src: app.ini.j2
     dest: "{{ gitea_conf_dir }}/app.ini"
     owner: "{{ gitea_user }}"
     group: "{{ gitea_group }}"
     mode: "0640"
+  when: not gitea_config_stat.stat.exists
   notify: restart gitea
 
-- name: Deploy systemd unit file
-  ansible.builtin.template:
-    src: gitea.service.j2
-    dest: /etc/systemd/system/gitea.service
-    owner: root
-    group: root
-    mode: "0644"
-  notify: restart gitea
+
 
 - name: Enable and start Gitea service
   ansible.builtin.service:

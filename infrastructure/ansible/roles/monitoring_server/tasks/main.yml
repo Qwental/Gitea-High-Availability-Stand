@@ -1,3 +1,4 @@
+---
 - name: Install dependencies for APT repositories
   ansible.builtin.apt:
     name:
@@ -50,6 +51,11 @@
     - /etc/alertmanager
     - /var/lib/alertmanager
 
+- name: Check if Prometheus binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/prometheus
+  register: prometheus_bin
+
 - name: Download Prometheus archive
   ansible.builtin.get_url:
     url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-{{ target_arch }}.tar.gz"
@@ -63,6 +69,7 @@
   until: prometheus_download is succeeded
   retries: 5
   delay: 10
+  when: not prometheus_bin.stat.exists
 
 - name: Extract Prometheus binaries
   ansible.builtin.unarchive:
@@ -75,12 +82,20 @@
       - "prometheus-{{ prometheus_version }}.linux-{{ target_arch }}/promtool"
     creates: /usr/local/bin/prometheus
   notify: restart monitoring services
+  when: not prometheus_bin.stat.exists
 
 - name: Remove temporary Prometheus archive
   ansible.builtin.file:
     path: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ target_arch }}.tar.gz"
     state: absent
-  when: prometheus_download is changed
+  when:
+    - not prometheus_bin.stat.exists
+    - prometheus_download is changed
+
+- name: Check if Alertmanager binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/alertmanager
+  register: alertmanager_bin
 
 - name: Download Alertmanager archive
   ansible.builtin.get_url:
@@ -94,6 +109,7 @@
   until: alertmanager_download is succeeded
   retries: 5
   delay: 10
+  when: not alertmanager_bin.stat.exists
 
 - name: Extract Alertmanager binaries
   ansible.builtin.unarchive:
@@ -106,12 +122,20 @@
       - "alertmanager-{{ alertmanager_version }}.linux-{{ target_arch }}/amtool"
     creates: /usr/local/bin/alertmanager
   notify: restart monitoring services
+  when: not alertmanager_bin.stat.exists
 
 - name: Remove temporary Alertmanager archive
   ansible.builtin.file:
     path: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ target_arch }}.tar.gz"
     state: absent
-  when: alertmanager_download is changed
+  when:
+    - not alertmanager_bin.stat.exists
+    - alertmanager_download is changed
+
+- name: Check if Loki binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/loki
+  register: loki_bin
 
 - name: Download Loki archive
   ansible.builtin.get_url:
@@ -125,6 +149,7 @@
   until: loki_download is succeeded
   retries: 5
   delay: 10
+  when: not loki_bin.stat.exists
 
 - name: Extract Loki binary
   ansible.builtin.unarchive:
@@ -132,6 +157,7 @@
     dest: /usr/local/bin/
     remote_src: yes
     creates: "/usr/local/bin/loki-linux-{{ target_arch }}"
+  when: not loki_bin.stat.exists
 
 - name: Rename Loki binary and set permissions
   ansible.builtin.copy:
@@ -141,12 +167,15 @@
     mode: "0755"
     owner: root
   notify: restart monitoring services
+  when: not loki_bin.stat.exists
 
 - name: Remove temporary Loki archive
   ansible.builtin.file:
     path: "/tmp/loki-linux-{{ target_arch }}.zip"
     state: absent
-  when: loki_download is changed
+  when:
+    - not loki_bin.stat.exists
+    - loki_download is changed
 
 - name: Deploy Configurations
   ansible.builtin.template:
@@ -227,9 +256,12 @@
     group: grafana
     mode: "0755"
 
-- name: Copy Grafana dashboards from local files
+- name: Deploy Grafana dashboards
   ansible.builtin.copy:
-    src: "dashboards/{{ item }}"
+    content: >-
+      {{ lookup('ansible.builtin.file', role_path ~ '/files/dashboards/' ~ item)
+         | regex_replace('\\$\\{DS_PROMETHEUS\\}', grafana_prometheus_uid | default('prometheus-internal'))
+         | regex_replace('\\$\\{DS_LOKI\\}', grafana_loki_uid | default('loki-internal')) }}
     dest: "/var/lib/grafana/dashboards/{{ item }}"
     owner: grafana
     group: grafana
@@ -240,28 +272,6 @@
     - PostgreSQL_9628.json
     - Alertmanager.json
   notify: restart grafana
-
-- name: Replace Prometheus UID variable in dashboards
-  ansible.builtin.replace:
-    path: "/var/lib/grafana/dashboards/{{ item }}"
-    regexp: "(?i)\\$\\{DS_PROMETHEUS\\}"
-    replace: "{{ grafana_prometheus_uid | default('prometheus-internal') }}"
-  loop:
-    - gitea_13192.json
-    - Node_Exporter_Full_1860.json
-    - PostgreSQL_9628.json
-    - Alertmanager.json
-
-- name: Replace Loki UID variable in dashboards
-  ansible.builtin.replace:
-    path: "/var/lib/grafana/dashboards/{{ item }}"
-    regexp: "(?i)\\$\\{DS_LOKI\\}"
-    replace: "{{ grafana_loki_uid | default('loki-internal') }}"
-  loop:
-    - gitea_13192.json
-    - Node_Exporter_Full_1860.json
-    - PostgreSQL_9628.json
-    - Alertmanager.json
 
 - name: Configure Grafana dashboard provisioning
   ansible.builtin.copy:

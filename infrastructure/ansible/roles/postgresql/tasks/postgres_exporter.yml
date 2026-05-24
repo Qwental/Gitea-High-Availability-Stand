@@ -1,3 +1,8 @@
+- name: Check if Postgres Exporter binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/postgres_exporter
+  register: pg_exporter_bin
+
 - name: Download Postgres Exporter archive
   ansible.builtin.get_url:
     url: "https://github.com/prometheus-community/postgres_exporter/releases/download/v{{ pg_exporter_version }}/postgres_exporter-{{ pg_exporter_version }}.linux-{{ target_arch }}.tar.gz"
@@ -10,6 +15,7 @@
   until: pg_exporter_download is succeeded
   retries: 5
   delay: 10
+  when: not pg_exporter_bin.stat.exists
 
 - name: Extract Postgres Exporter binary
   ansible.builtin.unarchive:
@@ -21,56 +27,10 @@
       - "postgres_exporter-{{ pg_exporter_version }}.linux-{{ target_arch }}/postgres_exporter"
     creates: /usr/local/bin/postgres_exporter
   notify: restart postgres_exporter
+  when: not pg_exporter_bin.stat.exists
 
 - name: Remove temporary Postgres Exporter archive
   ansible.builtin.file:
     path: "/tmp/postgres_exporter-{{ pg_exporter_version }}.linux-{{ target_arch }}.tar.gz"
     state: absent
-  when: pg_exporter_download is changed
-
-- name: Create postgres_exporter PostgreSQL user
-  community.postgresql.postgresql_user:
-    name: postgres_exporter
-    password: "{{ pg_exporter_password }}"
-    role_attr_flags: LOGIN
-  become_user: postgres
-  when: is_master | bool
-  register: postgres_exporter_user
-  until: postgres_exporter_user is success
-  retries: 5
-  delay: 10
-
-- name: Grant pg_monitor role to postgres_exporter
-  community.postgresql.postgresql_membership:
-    group: pg_monitor
-    target_roles:
-      - postgres_exporter
-  become_user: postgres
-  when: is_master | bool
-  register: postgres_exporter_grant
-  until: postgres_exporter_grant is success
-  retries: 5
-  delay: 10
-
-- name: Deploy postgres_exporter systemd service
-  ansible.builtin.template:
-    src: postgres_exporter.service.j2
-    dest: /etc/systemd/system/postgres_exporter.service
-    owner: root
-    group: root
-    mode: "0644"
-  notify: restart postgres_exporter
-
-- name: Reload systemd daemon
-  ansible.builtin.systemd:
-    daemon_reload: yes
-
-- name: Enable and start postgres_exporter
-  ansible.builtin.service:
-    name: postgres_exporter
-    state: started
-    enabled: yes
-  register: postgres_exporter_service
-  until: postgres_exporter_service is success
-  retries: 5
-  delay: 10
+  when: not pg_exporter_bin.stat.exists and pg_exporter_download is changed

@@ -22,40 +22,43 @@
   until: apt_install_status is success
   retries: 5
   delay: 15
+- name: Check if custom PostgreSQL service exists
+  ansible.builtin.stat:
+    path: /etc/systemd/system/postgresql.service
+  register: custom_pg_service
 
 - name: Stop and disable legacy template service
   ansible.builtin.systemd:
     name: "postgresql@{{ pg_version }}-main"
     state: stopped
     enabled: no
-  ignore_errors: yes
+  ignore_errors: true
+  when: not custom_pg_service.stat.exists
 
 - name: Stop umbrella postgresql service if active
   ansible.builtin.systemd:
     name: postgresql
     state: stopped
-  ignore_errors: yes
+  ignore_errors: true
+  when: not custom_pg_service.stat.exists
 
 - name: Mask template service to prevent auto-start
   ansible.builtin.systemd:
     name: "postgresql@.service"
     masked: yes
   ignore_errors: true
-
-- name: Mask umbrella service (will be replaced)
-  ansible.builtin.systemd:
-    name: postgresql.service
-    masked: yes
-  ignore_errors: true
+  when: not custom_pg_service.stat.exists
 
 - name: Remove systemd override directory
   ansible.builtin.file:
     path: /etc/systemd/system/postgresql@.service.d
     state: absent
+  when: not custom_pg_service.stat.exists
 
 - name: Reload systemd daemon
   ansible.builtin.systemd:
     daemon_reload: yes
+  when: not custom_pg_service.stat.exists
 
 - name: Wait until port 5432 is free
   ansible.builtin.wait_for:
@@ -63,6 +66,7 @@
     state: absent
     timeout: 30
   ignore_errors: true
+  when: not custom_pg_service.stat.exists
 
 - name: Unmask postgresql.service before writing custom unit
   ansible.builtin.systemd:

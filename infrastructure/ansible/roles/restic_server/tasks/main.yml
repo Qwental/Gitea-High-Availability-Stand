@@ -37,6 +37,11 @@
     group: backup
     mode: "0700"
 
+- name: Check if rest-server binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/rest-server
+  register: rest_server_bin
+
 - name: Download rest-server archive
   ansible.builtin.get_url:
     url: "https://github.com/restic/rest-server/releases/download/v0.14.0/rest-server_0.14.0_linux_{{ target_arch }}.tar.gz"
@@ -49,6 +54,7 @@
   until: rest_server_download is succeeded
   retries: 5
   delay: 10
+  when: not rest_server_bin.stat.exists
 
 - name: Extract rest-server binary
   ansible.builtin.unarchive:
@@ -60,12 +66,15 @@
       - "rest-server_0.14.0_linux_{{ target_arch }}/rest-server"
     creates: /usr/local/bin/rest-server
   notify: restart rest-server
+  when: not rest_server_bin.stat.exists
 
 - name: Remove temporary rest-server archive
   ansible.builtin.file:
     path: "/tmp/rest-server_0.14.0_linux_{{ target_arch }}.tar.gz"
     state: absent
-  when: rest_server_download is changed
+  when:
+    - not rest_server_bin.stat.exists
+    - rest_server_download is changed
 
 - name: Set permissions for rest-server binary
   ansible.builtin.file:
