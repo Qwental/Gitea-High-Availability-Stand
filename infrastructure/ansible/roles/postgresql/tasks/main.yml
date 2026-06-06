@@ -8,7 +8,11 @@
   retries: 3
   delay: 10
 
-- name: Install PostgreSQL and Repmgr packages
+- name: Set timezone to Europe/Moscow
+  community.general.timezone:
+    name: Europe/Moscow
+    
+- name: Install packages
   ansible.builtin.apt:
     name:
       - "postgresql-{{ pg_version }}"
@@ -22,12 +26,13 @@
   until: apt_install_status is success
   retries: 5
   delay: 15
-- name: Check if custom PostgreSQL service exists
+
+- name: Check if PostgreSQL service exists
   ansible.builtin.stat:
     path: /etc/systemd/system/postgresql.service
   register: custom_pg_service
 
-- name: Stop and disable legacy template service
+- name: Stop and disable legacy service
   ansible.builtin.systemd:
     name: "postgresql@{{ pg_version }}-main"
     state: stopped
@@ -110,9 +115,7 @@
     group: postgres
     mode: "2775"
 
-- name: Set timezone to Europe/Moscow
-  community.general.timezone:
-    name: Europe/Moscow
+
 
 - name: Ensure PostgreSQL configuration directory exists
   ansible.builtin.file:

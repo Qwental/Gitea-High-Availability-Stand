@@ -3,7 +3,7 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /var/lib/promtail/positions.yaml # Исправлено: перенос из /tmp
+  filename: /var/lib/promtail/positions.yaml
 
 clients:
   - url: http://{{ hostvars['monitor-node-01']['ansible_host'] }}:3100/loki/api/v1/push
